@@ -1,3 +1,8 @@
+.env
+boost_results/
+flipattack_results/
+logiattack_runs/
+logitranslate_runs/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
