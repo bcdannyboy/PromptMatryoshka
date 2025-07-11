@@ -46,6 +46,19 @@ from typing import List, Dict, Any
 from promptmatryoshka.plugins.base import PluginBase
 from promptmatryoshka.advbench import AdvBenchLoader, AdvBenchError
 from promptmatryoshka.storage import save_json
+from promptmatryoshka.config import get_config, Config, ConfigurationError
+from promptmatryoshka.llm_factory import get_factory, LLMFactory
+from promptmatryoshka.providers import discover_providers, get_provider_info, is_provider_available
+from promptmatryoshka.exceptions import (
+    LLMError,
+    LLMConfigurationError,
+    LLMUnsupportedProviderError,
+    LLMConnectionError,
+    LLMAuthenticationError,
+    LLMRateLimitError,
+    LLMTimeoutError,
+    LLMValidationError
+)
 
 PLUGIN_PACKAGE = "promptmatryoshka.plugins"
 # Robustly resolve the plugins directory relative to the project root
@@ -54,6 +67,95 @@ PROJECT_ROOT = os.path.abspath(os.path.join(CLI_DIR, ".."))
 PLUGIN_PATH = os.path.join(PROJECT_ROOT, "promptmatryoshka", "plugins")
 
 # (sys.path logic moved to top of file)
+
+def handle_llm_error(error: Exception, context: str = "operation") -> None:
+    """Handle LLM-related errors with user-friendly messages and suggestions.
+    
+    Args:
+        error: The exception that occurred
+        context: Context of where the error occurred
+    """
+    error_msg = f"Error during {context}: {str(error)}"
+    
+    if isinstance(error, LLMConfigurationError):
+        print(f"❌ Configuration Error: {error.message}", file=sys.stderr)
+        if hasattr(error, 'config_key') and error.config_key:
+            print(f"   Issue with configuration key: {error.config_key}", file=sys.stderr)
+        print("   💡 Suggestions:", file=sys.stderr)
+        print("   - Check your configuration file (config.json)", file=sys.stderr)
+        print("   - Verify all required settings are present", file=sys.stderr)
+        print("   - Run 'promptmatryoshka validate-config' to check configuration", file=sys.stderr)
+        
+    elif isinstance(error, LLMUnsupportedProviderError):
+        print(f"❌ Unsupported Provider: {error.message}", file=sys.stderr)
+        if hasattr(error, 'supported_providers') and error.supported_providers:
+            print(f"   Available providers: {', '.join(error.supported_providers)}", file=sys.stderr)
+        print("   💡 Suggestions:", file=sys.stderr)
+        print("   - Run 'promptmatryoshka list-providers' to see available providers", file=sys.stderr)
+        print("   - Check if required dependencies are installed", file=sys.stderr)
+        
+    elif isinstance(error, LLMAuthenticationError):
+        print(f"❌ Authentication Error: {error.message}", file=sys.stderr)
+        print("   💡 Suggestions:", file=sys.stderr)
+        print("   - Check your API key configuration", file=sys.stderr)
+        print("   - Verify environment variables are set correctly", file=sys.stderr)
+        print("   - Ensure your API key has sufficient permissions", file=sys.stderr)
+        
+    elif isinstance(error, LLMConnectionError):
+        print(f"❌ Connection Error: {error.message}", file=sys.stderr)
+        print("   💡 Suggestions:", file=sys.stderr)
+        print("   - Check your internet connection", file=sys.stderr)
+        print("   - Verify the provider's service status", file=sys.stderr)
+        print("   - Try again in a few moments", file=sys.stderr)
+        
+    elif isinstance(error, LLMRateLimitError):
+        print(f"❌ Rate Limit Error: {error.message}", file=sys.stderr)
+        if hasattr(error, 'retry_after') and error.retry_after:
+            print(f"   Retry after: {error.retry_after} seconds", file=sys.stderr)
+        print("   💡 Suggestions:", file=sys.stderr)
+        print("   - Wait before retrying", file=sys.stderr)
+        print("   - Consider upgrading your API plan", file=sys.stderr)
+        print("   - Implement request throttling", file=sys.stderr)
+        
+    elif isinstance(error, LLMTimeoutError):
+        print(f"❌ Timeout Error: {error.message}", file=sys.stderr)
+        print("   💡 Suggestions:", file=sys.stderr)
+        print("   - Try with a shorter prompt or simpler request", file=sys.stderr)
+        print("   - Increase timeout settings in configuration", file=sys.stderr)
+        print("   - Check network connectivity", file=sys.stderr)
+        
+    elif isinstance(error, LLMValidationError):
+        print(f"❌ Validation Error: {error.message}", file=sys.stderr)
+        if hasattr(error, 'parameter_name') and error.parameter_name:
+            print(f"   Parameter: {error.parameter_name}", file=sys.stderr)
+        print("   💡 Suggestions:", file=sys.stderr)
+        print("   - Check input parameters and values", file=sys.stderr)
+        print("   - Verify configuration settings are within valid ranges", file=sys.stderr)
+        
+    elif isinstance(error, ConfigurationError):
+        print(f"❌ Configuration Error: {str(error)}", file=sys.stderr)
+        print("   💡 Suggestions:", file=sys.stderr)
+        print("   - Check your config.json file syntax", file=sys.stderr)
+        print("   - Run 'promptmatryoshka validate-config' for detailed validation", file=sys.stderr)
+        print("   - Ensure all required environment variables are set", file=sys.stderr)
+        
+    elif isinstance(error, LLMError):
+        print(f"❌ LLM Error: {error.message}", file=sys.stderr)
+        if hasattr(error, 'provider') and error.provider:
+            print(f"   Provider: {error.provider}", file=sys.stderr)
+        if hasattr(error, 'error_code') and error.error_code:
+            print(f"   Error Code: {error.error_code}", file=sys.stderr)
+        print("   💡 Suggestions:", file=sys.stderr)
+        print("   - Check provider-specific documentation", file=sys.stderr)
+        print("   - Verify your configuration and credentials", file=sys.stderr)
+        
+    else:
+        print(f"❌ Unexpected Error: {str(error)}", file=sys.stderr)
+        print("   💡 Suggestions:", file=sys.stderr)
+        print("   - Run with --debug flag for more details", file=sys.stderr)
+        print("   - Check the logs for additional information", file=sys.stderr)
+        print("   - Report this issue if it persists", file=sys.stderr)
+
 
 def discover_plugins():
     """
@@ -431,6 +533,302 @@ def run_advbench(args):
         sys.exit(1)
 
 
+def list_providers_command(args):
+    """List all available providers with their status."""
+    try:
+        providers = discover_providers()
+        
+        if args.json:
+            print(json.dumps(providers, indent=2))
+        else:
+            print("Available LLM Providers:")
+            print("=" * 50)
+            for name, info in providers.items():
+                status = "✓ Available" if info.get("available", False) else "✗ Not Available"
+                description = info.get("description", "No description")
+                print(f"{name:<15} {status:<15} {description}")
+                
+                if not info.get("available", False) and "error" in info:
+                    print(f"                Error: {info['error']}")
+    
+    except Exception as e:
+        handle_llm_error(e, "listing providers")
+        sys.exit(1)
+
+
+def check_provider_command(args):
+    """Check a specific provider's configuration and availability."""
+    try:
+        provider_name = args.provider
+        
+        # Check if provider exists
+        try:
+            provider_info = get_provider_info(provider_name)
+        except LLMUnsupportedProviderError:
+            print(f"Provider '{provider_name}' not found", file=sys.stderr)
+            sys.exit(1)
+        
+        # Check availability
+        available = is_provider_available(provider_name)
+        
+        if args.json:
+            result = {
+                "provider": provider_name,
+                "available": available,
+                "info": provider_info
+            }
+            print(json.dumps(result, indent=2))
+        else:
+            print(f"Provider: {provider_name}")
+            print(f"Status: {'Available' if available else 'Not Available'}")
+            print(f"Description: {provider_info.get('description', 'No description')}")
+            
+            if 'dependencies' in provider_info:
+                print(f"Dependencies: {', '.join(provider_info['dependencies'])}")
+            
+            if not available and 'error' in provider_info:
+                print(f"Error: {provider_info['error']}")
+    
+    except Exception as e:
+        handle_llm_error(e, "checking provider")
+        sys.exit(1)
+
+
+def test_provider_command(args):
+    """Test a provider's connection and functionality."""
+    try:
+        provider_name = args.provider
+        config = get_config()
+        factory = get_factory()
+        
+        # Get provider configuration
+        provider_config = config.get_provider_config(provider_name)
+        if not provider_config:
+            print(f"No configuration found for provider '{provider_name}'", file=sys.stderr)
+            sys.exit(1)
+        
+        # Create basic LLM configuration for testing
+        llm_config = {
+            "model": provider_config.default_model,
+            "temperature": 0.0,
+            "max_tokens": 10
+        }
+        
+        print(f"Testing provider '{provider_name}'...")
+        
+        # Try to create interface
+        try:
+            interface = factory.create_interface(provider_name, llm_config)
+            print("✓ Provider interface created successfully")
+        except Exception as e:
+            print(f"✗ Failed to create provider interface: {e}")
+            sys.exit(1)
+        
+        # Try health check if available
+        if hasattr(interface, 'health_check'):
+            try:
+                interface.health_check()
+                print("✓ Health check passed")
+            except Exception as e:
+                print(f"✗ Health check failed: {e}")
+        
+        print(f"Provider '{provider_name}' is working correctly")
+    
+    except Exception as e:
+        handle_llm_error(e, "testing provider")
+        sys.exit(1)
+
+
+def list_profiles_command(args):
+    """List all available profiles."""
+    try:
+        config = get_config()
+        profiles = config.get_available_profiles()
+        
+        if args.json:
+            profile_data = {}
+            for profile_name in profiles:
+                profile_config = config.get_profile_config(profile_name)
+                if profile_config:
+                    profile_data[profile_name] = profile_config.model_dump()
+            print(json.dumps(profile_data, indent=2))
+        else:
+            print("Available Configuration Profiles:")
+            print("=" * 50)
+            for profile_name in profiles:
+                profile_config = config.get_profile_config(profile_name)
+                if profile_config:
+                    print(f"{profile_name:<20} {profile_config.provider:<12} {profile_config.model}")
+                    if profile_config.description:
+                        print(f"                     {profile_config.description}")
+    
+    except Exception as e:
+        handle_llm_error(e, "listing profiles")
+        sys.exit(1)
+
+
+def show_profile_command(args):
+    """Show detailed information about a specific profile."""
+    try:
+        config = get_config()
+        profile_name = args.profile
+        
+        profile_config = config.get_profile_config(profile_name)
+        if not profile_config:
+            print(f"Profile '{profile_name}' not found", file=sys.stderr)
+            sys.exit(1)
+        
+        if args.json:
+            print(json.dumps(profile_config.model_dump(), indent=2))
+        else:
+            print(f"Profile: {profile_name}")
+            print("=" * 50)
+            print(f"Provider: {profile_config.provider}")
+            print(f"Model: {profile_config.model}")
+            print(f"Temperature: {profile_config.temperature}")
+            print(f"Max Tokens: {profile_config.max_tokens}")
+            print(f"Top P: {profile_config.top_p}")
+            print(f"Frequency Penalty: {profile_config.frequency_penalty}")
+            print(f"Presence Penalty: {profile_config.presence_penalty}")
+            print(f"Request Timeout: {profile_config.request_timeout}")
+            
+            if profile_config.description:
+                print(f"Description: {profile_config.description}")
+    
+    except Exception as e:
+        handle_llm_error(e, "showing profile")
+        sys.exit(1)
+
+
+def validate_config_command(args):
+    """Validate the current configuration."""
+    try:
+        config = get_config()
+        
+        print("Validating configuration...")
+        
+        # Validate configuration
+        try:
+            config.validate_configuration()
+            print("✓ Configuration validation passed")
+        except Exception as e:
+            print(f"✗ Configuration validation failed: {e}")
+            sys.exit(1)
+        
+        # Check provider availability
+        providers = config.get_available_providers()
+        available_providers = []
+        unavailable_providers = []
+        
+        for provider_name in providers:
+            if is_provider_available(provider_name):
+                available_providers.append(provider_name)
+            else:
+                unavailable_providers.append(provider_name)
+        
+        print(f"✓ {len(available_providers)} providers available: {', '.join(available_providers)}")
+        if unavailable_providers:
+            print(f"✗ {len(unavailable_providers)} providers unavailable: {', '.join(unavailable_providers)}")
+        
+        # Check profiles
+        profiles = config.get_available_profiles()
+        print(f"✓ {len(profiles)} profiles configured: {', '.join(profiles)}")
+        
+        print("Configuration validation complete")
+    
+    except Exception as e:
+        handle_llm_error(e, "validating configuration")
+        sys.exit(1)
+
+
+def show_config_command(args):
+    """Show current configuration with masked secrets."""
+    try:
+        config = get_config()
+        config_dict = config.to_dict()
+        
+        # Mask sensitive information
+        def mask_secrets(data):
+            if isinstance(data, dict):
+                masked_data = {}
+                for key, value in data.items():
+                    if 'api_key' in key.lower() or 'secret' in key.lower() or 'password' in key.lower():
+                        if isinstance(value, str) and value:
+                            masked_data[key] = value[:8] + "*" * max(0, len(value) - 8)
+                        else:
+                            masked_data[key] = value
+                    else:
+                        masked_data[key] = mask_secrets(value)
+                return masked_data
+            elif isinstance(data, list):
+                return [mask_secrets(item) for item in data]
+            else:
+                return data
+        
+        masked_config = mask_secrets(config_dict)
+        
+        if args.json:
+            print(json.dumps(masked_config, indent=2))
+        else:
+            print("Current Configuration:")
+            print("=" * 50)
+            print(json.dumps(masked_config, indent=2))
+    
+    except Exception as e:
+        handle_llm_error(e, "showing configuration")
+        sys.exit(1)
+
+
+def config_health_command(args):
+    """Check configuration health and provider availability."""
+    try:
+        config = get_config()
+        factory = get_factory()
+        
+        print("Checking configuration health...")
+        print("=" * 50)
+        
+        # Check configuration validity
+        try:
+            config.validate_configuration()
+            print("✓ Configuration is valid")
+        except Exception as e:
+            print(f"✗ Configuration validation failed: {e}")
+            return
+        
+        # Check each provider
+        providers = config.get_available_providers()
+        for provider_name in providers:
+            provider_config = config.get_provider_config(provider_name)
+            if provider_config:
+                try:
+                    # Test basic interface creation
+                    llm_config = {
+                        "model": provider_config.default_model,
+                        "temperature": 0.0,
+                        "max_tokens": 10
+                    }
+                    interface = factory.create_interface(provider_name, llm_config)
+                    print(f"✓ Provider '{provider_name}' is healthy")
+                except Exception as e:
+                    print(f"✗ Provider '{provider_name}' has issues: {e}")
+        
+        # Check profiles
+        profiles = config.get_available_profiles()
+        for profile_name in profiles:
+            try:
+                interface = factory.create_from_profile(profile_name)
+                print(f"✓ Profile '{profile_name}' is healthy")
+            except Exception as e:
+                print(f"✗ Profile '{profile_name}' has issues: {e}")
+        
+        print("Configuration health check complete")
+    
+    except Exception as e:
+        handle_llm_error(e, "checking configuration health")
+        sys.exit(1)
+
+
 def main():
     """
     Main CLI entry point for PromptMatryoshka.
@@ -470,6 +868,14 @@ def main():
         "--debug", action="store_true",
         help="Enable debug logging"
     )
+    run_parser.add_argument(
+        "--provider", type=str, default=None,
+        help="Provider to use for LLM operations (e.g., openai, anthropic)"
+    )
+    run_parser.add_argument(
+        "--profile", type=str, default=None,
+        help="Configuration profile to use"
+    )
 
     # list-plugins subcommand
     list_parser = subparsers.add_parser("list-plugins", help="List all available plugins.")
@@ -497,6 +903,33 @@ def main():
                                 help="Maximum number of retries for failed plugins (default: 3)")
     advbench_parser.add_argument("--debug", action="store_true", help="Enable debug logging")
 
+    # Provider management commands
+    list_providers_parser = subparsers.add_parser("list-providers", help="List all available LLM providers")
+    list_providers_parser.add_argument("--json", action="store_true", help="Output as JSON")
+
+    check_provider_parser = subparsers.add_parser("check-provider", help="Check a specific provider's configuration")
+    check_provider_parser.add_argument("provider", type=str, help="Provider name to check")
+    check_provider_parser.add_argument("--json", action="store_true", help="Output as JSON")
+
+    test_provider_parser = subparsers.add_parser("test-provider", help="Test a provider's connection and functionality")
+    test_provider_parser.add_argument("provider", type=str, help="Provider name to test")
+
+    # Profile management commands
+    list_profiles_parser = subparsers.add_parser("list-profiles", help="List all available configuration profiles")
+    list_profiles_parser.add_argument("--json", action="store_true", help="Output as JSON")
+
+    show_profile_parser = subparsers.add_parser("show-profile", help="Show detailed information about a profile")
+    show_profile_parser.add_argument("profile", type=str, help="Profile name to show")
+    show_profile_parser.add_argument("--json", action="store_true", help="Output as JSON")
+
+    validate_config_parser = subparsers.add_parser("validate-config", help="Validate the current configuration")
+
+    # Configuration management commands
+    show_config_parser = subparsers.add_parser("show-config", help="Show current configuration")
+    show_config_parser.add_argument("--json", action="store_true", help="Output as JSON")
+
+    config_health_parser = subparsers.add_parser("config-health", help="Check configuration health and provider availability")
+
     args = parser.parse_args()
 
     if args.command == "list-plugins":
@@ -505,6 +938,22 @@ def main():
         describe_plugin(args.plugin_name, json_output=getattr(args, "json", False))
     elif args.command == "advbench":
         run_advbench(args)
+    elif args.command == "list-providers":
+        list_providers_command(args)
+    elif args.command == "check-provider":
+        check_provider_command(args)
+    elif args.command == "test-provider":
+        test_provider_command(args)
+    elif args.command == "list-profiles":
+        list_profiles_command(args)
+    elif args.command == "show-profile":
+        show_profile_command(args)
+    elif args.command == "validate-config":
+        validate_config_command(args)
+    elif args.command == "show-config":
+        show_config_command(args)
+    elif args.command == "config-health":
+        config_health_command(args)
     elif args.command == "run":
         try:
             # --- Input reading and normalization ---
@@ -525,75 +974,145 @@ def main():
                 # Direct string input from CLI
                 inputs = [args.input.strip()]
 
-            # --- Plugin discovery and execution ---
-            plugins = discover_plugins()
-            results = []
-            if args.plugin:
-                # Run a single plugin by name
-                plugin_name = args.plugin
-                if plugin_name not in plugins:
-                    print(f"Plugin '{plugin_name}' not found.", file=sys.stderr)
-                    sys.exit(1)
-                plugin_cls = plugins[plugin_name]
-                plugin = plugin_cls()
-                for inp in inputs:
-                    try:
-                        output = plugin.run(inp)
-                        results.append({"input": inp, "output": output, "plugin": plugin_name})
-                    except Exception as e:
-                        # Capture and report plugin errors per input
-                        if args.debug:
-                            traceback.print_exc()
-                        results.append({"input": inp, "error": str(e), "plugin": plugin_name})
-            else:
-                # Run the full pipeline: explicit research order (FlipAttack → LogiTranslate → BOOST → LogiAttack)
-                plugin_order = ['flipattack', 'logitranslate', 'boost', 'logiattack']
-                pipeline = []
-                for name in plugin_order:
-                    if name in plugins:
-                        pipeline.append(plugins[name]())
-                    else:
-                        print(f"Warning: Plugin '{name}' not found in discovered plugins", file=sys.stderr)
-                for inp in inputs:
-                    stage_results = []
-                    data = inp
-                    print(f"Starting pipeline for input: {inp[:50]}{'...' if len(inp) > 50 else ''}", file=sys.stderr)
-                    
-                    for i, plugin in enumerate(pipeline):
-                        plugin_name = plugin.__class__.__name__
+            # --- Plugin discovery and execution with new multi-provider system ---
+            try:
+                from promptmatryoshka.core import PromptMatryoshka
+                
+                # Create PromptMatryoshka instance with provider/profile options
+                pm = PromptMatryoshka(
+                    provider=getattr(args, 'provider', None),
+                    profile=getattr(args, 'profile', None)
+                )
+                
+                results = []
+                
+                if args.plugin:
+                    # Run a single plugin by name using the new system
+                    plugin_name = args.plugin
+                    for inp in inputs:
                         try:
-                            # Log input validation
-                            if not isinstance(data, str):
-                                print(f"Warning: Plugin {plugin_name} received non-string input: {type(data)}", file=sys.stderr)
-                                if hasattr(data, '__str__'):
-                                    data = str(data)
-                                else:
-                                    raise ValueError(f"Plugin {plugin_name} cannot process input of type {type(data)}")
+                            output = pm.jailbreak(
+                                inp,
+                                plugins=[plugin_name],
+                                provider=getattr(args, 'provider', None),
+                                profile=getattr(args, 'profile', None)
+                            )
+                            results.append({"input": inp, "output": output, "plugin": plugin_name})
+                        except Exception as e:
+                            # Capture and report plugin errors per input
+                            if args.debug:
+                                traceback.print_exc()
+                            results.append({"input": inp, "error": str(e), "plugin": plugin_name})
+                else:
+                    # Run the full pipeline using the new system
+                    for inp in inputs:
+                        try:
+                            print(f"Starting pipeline for input: {inp[:50]}{'...' if len(inp) > 50 else ''}", file=sys.stderr)
                             
-                            print(f"  Running {plugin_name} (stage {i+1}/{len(pipeline)})...", file=sys.stderr)
-                            data = plugin.run(data)
+                            output = pm.jailbreak(
+                                inp,
+                                provider=getattr(args, 'provider', None),
+                                profile=getattr(args, 'profile', None)
+                            )
                             
-                            # Log output validation
-                            if not isinstance(data, str):
-                                print(f"Warning: Plugin {plugin_name} returned non-string output: {type(data)}", file=sys.stderr)
-                                if hasattr(data, '__str__'):
-                                    data = str(data)
-                                else:
-                                    raise ValueError(f"Plugin {plugin_name} returned invalid output type {type(data)}")
+                            # Get pipeline info for detailed results
+                            pipeline_info = pm.get_pipeline_info()
+                            stage_results = []
                             
-                            stage_results.append({"plugin": plugin_name, "output": data})
-                            print(f"  {plugin_name} completed successfully", file=sys.stderr)
+                            # Create stage results showing the pipeline flow
+                            for plugin_info in pipeline_info["plugins"]:
+                                stage_results.append({
+                                    "plugin": plugin_info["name"],
+                                    "output": output if plugin_info == pipeline_info["plugins"][-1] else "...",
+                                    "category": plugin_info["category"]
+                                })
+                            
+                            results.append({
+                                "input": inp,
+                                "output": output,
+                                "stages": stage_results,
+                                "pipeline_info": pipeline_info
+                            })
                             
                         except Exception as e:
-                            # Capture and report error with context
-                            error_msg = f"Error in {plugin_name}: {str(e)}"
+                            error_msg = f"Error in pipeline: {str(e)}"
                             print(f"  {error_msg}", file=sys.stderr)
                             if args.debug:
-                                print(f"  Input to failed plugin: {data[:200]}{'...' if len(str(data)) > 200 else ''}", file=sys.stderr)
                                 traceback.print_exc()
-                            stage_results.append({"plugin": plugin_name, "error": str(e)})
-                            break
-                    results.append({"input": inp, "stages": stage_results})
+                            results.append({"input": inp, "error": str(e)})
+                            
+            except ImportError:
+                # Fallback to old system if new system is not available
+                print("Warning: Using legacy plugin system (new multi-provider system not available)", file=sys.stderr)
+                
+                plugins = discover_plugins()
+                results = []
+                if args.plugin:
+                    # Run a single plugin by name
+                    plugin_name = args.plugin
+                    if plugin_name not in plugins:
+                        print(f"Plugin '{plugin_name}' not found.", file=sys.stderr)
+                        sys.exit(1)
+                    plugin_cls = plugins[plugin_name]
+                    plugin = plugin_cls()
+                    for inp in inputs:
+                        try:
+                            output = plugin.run(inp)
+                            results.append({"input": inp, "output": output, "plugin": plugin_name})
+                        except Exception as e:
+                            # Capture and report plugin errors per input
+                            if args.debug:
+                                traceback.print_exc()
+                            results.append({"input": inp, "error": str(e), "plugin": plugin_name})
+                else:
+                    # Run the full pipeline: explicit research order (FlipAttack → LogiTranslate → BOOST → LogiAttack)
+                    plugin_order = ['flipattack', 'logitranslate', 'boost', 'logiattack']
+                    pipeline = []
+                    for name in plugin_order:
+                        if name in plugins:
+                            pipeline.append(plugins[name]())
+                        else:
+                            print(f"Warning: Plugin '{name}' not found in discovered plugins", file=sys.stderr)
+                    for inp in inputs:
+                        stage_results = []
+                        data = inp
+                        print(f"Starting pipeline for input: {inp[:50]}{'...' if len(inp) > 50 else ''}", file=sys.stderr)
+                        
+                        for i, plugin in enumerate(pipeline):
+                            plugin_name = plugin.__class__.__name__
+                            try:
+                                # Log input validation
+                                if not isinstance(data, str):
+                                    print(f"Warning: Plugin {plugin_name} received non-string input: {type(data)}", file=sys.stderr)
+                                    if hasattr(data, '__str__'):
+                                        data = str(data)
+                                    else:
+                                        raise ValueError(f"Plugin {plugin_name} cannot process input of type {type(data)}")
+                                
+                                print(f"  Running {plugin_name} (stage {i+1}/{len(pipeline)})...", file=sys.stderr)
+                                data = plugin.run(data)
+                                
+                                # Log output validation
+                                if not isinstance(data, str):
+                                    print(f"Warning: Plugin {plugin_name} returned non-string output: {type(data)}", file=sys.stderr)
+                                    if hasattr(data, '__str__'):
+                                        data = str(data)
+                                    else:
+                                        raise ValueError(f"Plugin {plugin_name} returned invalid output type {type(data)}")
+                                
+                                stage_results.append({"plugin": plugin_name, "output": data})
+                                print(f"  {plugin_name} completed successfully", file=sys.stderr)
+                                
+                            except Exception as e:
+                                # Capture and report error with context
+                                error_msg = f"Error in {plugin_name}: {str(e)}"
+                                print(f"  {error_msg}", file=sys.stderr)
+                                if args.debug:
+                                    print(f"  Input to failed plugin: {data[:200]}{'...' if len(str(data)) > 200 else ''}", file=sys.stderr)
+                                    traceback.print_exc()
+                                stage_results.append({"plugin": plugin_name, "error": str(e)})
+                                break
+                        results.append({"input": inp, "stages": stage_results})
             # --- Output formatting ---
             if args.output_json:
                 print(json.dumps(results, indent=2, ensure_ascii=False))
@@ -611,7 +1130,7 @@ def main():
                             else:
                                 print(f"  {stage['plugin']}: {stage['output']}")
         except Exception as e:
-            print(f"Fatal error: {e}", file=sys.stderr)
+            handle_llm_error(e, "running command")
             if getattr(args, "debug", False):
                 traceback.print_exc()
             sys.exit(1)

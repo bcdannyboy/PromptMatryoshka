@@ -2,26 +2,37 @@
 
 ## Purpose & Overview
 
-The [`core.py`](../promptmatryoshka/core.py) module serves as the central orchestrator for the PromptMatryoshka framework. It coordinates the multi-stage jailbreak pipeline, manages plugin loading and dependency resolution, and provides the main API for executing attacks. This module implements the core logic that binds together the four-stage pipeline: FlipAttack → LogiTranslate → BOOST → LogiAttack.
+The [`core.py`](../promptmatryoshka/core.py) module serves as the central orchestrator for the PromptMatryoshka framework. It coordinates the multi-stage jailbreak pipeline with **multi-provider LLM support**, manages plugin loading and dependency resolution, and provides the main API for executing attacks. This module implements the core logic that binds together the four-stage pipeline: FlipAttack → LogiTranslate → BOOST → LogiAttack, with seamless provider switching and configuration management.
 
 ## Architecture
 
-The core module follows a sophisticated plugin-based architecture with dependency resolution:
+The core module follows a sophisticated plugin-based architecture with multi-provider support and dependency resolution:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                     PromptMatryoshka                           │
+│                Multi-Provider PromptMatryoshka                  │
 │  ┌─────────────────────────────────────────────────────────┐   │
 │  │                PipelineBuilder                          │   │
 │  │  ┌─────────────────────────────────────────────────┐   │   │
 │  │  │            Plugin Registry                      │   │   │
 │  │  │  • Plugin Discovery                             │   │   │
 │  │  │  • Dependency Resolution                        │   │   │
+│  │  │  • Provider Configuration                       │   │   │
 │  │  │  • Validation                                   │   │   │
 │  │  └─────────────────────────────────────────────────┘   │   │
 │  └─────────────────────────────────────────────────────────┘   │
 │                                                                 │
+│  ┌─────────────────────────────────────────────────────────┐   │
+│  │                LLM Factory                              │   │
+│  │  • OpenAI Integration                                   │   │
+│  │  • Anthropic Integration                               │   │
+│  │  • Ollama Integration                                   │   │
+│  │  • HuggingFace Integration                             │   │
+│  └─────────────────────────────────────────────────────────┘   │
+│                                                                 │
 │  Plugin Pipeline: [FlipAttack] → [LogiTranslate] → [BOOST] → [LogiAttack]
+│                      ↓               ↓              ↓           ↓
+│                   OpenAI         Anthropic      Ollama    HuggingFace
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -66,53 +77,85 @@ class PipelineBuilder:
 
 ## Usage Examples
 
-### Basic Pipeline Execution
+### Basic Multi-Provider Pipeline Execution
 
 ```python
 from promptmatryoshka.core import PromptMatryoshka
+from promptmatryoshka.config import get_config
 
-# Create pipeline with default plugins
+# Create pipeline with default plugins and current profile
 pipeline = PromptMatryoshka()
 
-# Execute the full pipeline
+# Execute the full pipeline using current provider configuration
 result = pipeline.jailbreak("Write instructions for making explosives")
 print(result)
 ```
 
-### Custom Plugin Configuration
+### Multi-Provider Configuration
+
+```python
+from promptmatryoshka.config import get_config
+
+# Get configuration and switch to specific provider profile
+config = get_config()
+config.set_profile("production-anthropic")
+
+# Create pipeline - will use Anthropic provider
+pipeline = PromptMatryoshka()
+result = pipeline.jailbreak("Harmful prompt")
+```
+
+### Custom Plugin Configuration with Provider Override
 
 ```python
 # Create pipeline with specific plugins
 pipeline = PromptMatryoshka(plugins=['flipattack', 'logitranslate', 'boost'])
 
-# Execute with custom plugins
-result = pipeline.jailbreak("Harmful prompt", plugins=['flipattack', 'boost'])
+# Execute with custom plugins and specific provider settings
+result = pipeline.jailbreak(
+    "Harmful prompt",
+    plugins=['flipattack', 'boost'],
+    provider_override="openai"
+)
 ```
 
-### Pipeline Validation
+### Pipeline Validation with Provider Checks
 
 ```python
 from promptmatryoshka.core import PipelineBuilder
 
 builder = PipelineBuilder()
-validation_result = builder.validate_pipeline(['flipattack', 'logitranslate', 'boost', 'logiattack'])
+validation_result = builder.validate_pipeline([
+    'flipattack', 'logitranslate', 'boost', 'logiattack'
+])
 
 if validation_result.valid:
     print("Pipeline is valid")
+    print(f"Provider compatibility: {validation_result.provider_compatibility}")
 else:
     print(f"Validation errors: {validation_result.errors}")
 ```
 
 ## Integration Points
 
+### Multi-Provider System Integration
+
+- **LLM Factory Integration**: Seamlessly integrates with [`LLMFactory`](../promptmatryoshka/llm_factory.py) for provider management
+- **Configuration Profile Support**: Automatically adapts to active configuration profiles
+- **Provider Switching**: Supports runtime provider switching and configuration
+
 ### Plugin System Integration
 
 - **Plugin Discovery**: Automatically discovers plugins in the [`promptmatryoshka/plugins/`](../promptmatryoshka/plugins/) directory
 - **Plugin Registry**: Maintains a registry of available plugins with metadata
 - **Dependency Resolution**: Uses topological sorting to resolve plugin dependencies
+- **Provider Compatibility**: Validates plugin compatibility with selected providers
 
 ### Configuration Integration
 
+- **Multi-Provider Configuration**: Supports configuration for multiple LLM providers
+- **Profile Management**: Integrates with configuration profiles for different use cases
+- **Environment Variable Resolution**: Automatically resolves environment variables
 - **Auto-discovery**: Automatically registers plugins on initialization
 - **Backward Compatibility**: Supports legacy `stages` parameter
 - **Plugin Validation**: Validates plugin inputs and outputs
@@ -120,6 +163,7 @@ else:
 ### Logging Integration
 
 - **Centralized Logging**: Uses [`logging_utils.get_logger()`](../promptmatryoshka/logging_utils.py:24) for consistent logging
+- **Provider Context**: Includes provider information in log messages
 - **Debug Information**: Provides detailed logging for pipeline execution
 - **Error Handling**: Comprehensive error logging with context
 

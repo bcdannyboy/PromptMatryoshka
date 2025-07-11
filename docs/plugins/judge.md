@@ -117,9 +117,9 @@ def run(self, input_data: str, save_dir=None) -> str:
         raise ValueError("Input must contain 'original_prompt' and 'response' fields")
 ```
 
-### LLM Integration
+### Multi-Provider LLM Integration
 
-The plugin integrates with the configuration system for LLM selection:
+The plugin integrates with the multi-provider configuration system for flexible LLM selection:
 
 ```python
 def __init__(self, llm=None, logger=None):
@@ -130,23 +130,19 @@ def __init__(self, llm=None, logger=None):
     if llm is None:
         try:
             config = get_config()
+            provider = config.get_provider_for_plugin("judge")
             model = config.get_model_for_plugin("judge")
             llm_settings = config.get_llm_settings_for_plugin("judge")
             
-            # Extract relevant settings for ChatOpenAI
-            openai_kwargs = {
-                "model": model,
-                "temperature": llm_settings.get("temperature", 0.0),
-                "max_tokens": llm_settings.get("max_tokens", 1000),
-                "top_p": llm_settings.get("top_p", 1.0),
-                "frequency_penalty": llm_settings.get("frequency_penalty", 0.0),
-                "presence_penalty": llm_settings.get("presence_penalty", 0.0),
-                "request_timeout": llm_settings.get("request_timeout", 120)
-            }
+            # Create LLM instance through factory pattern
+            from promptmatryoshka.llm_factory import LLMFactory
+            self.llm = LLMFactory.create_llm(provider, model, **llm_settings)
             
-            self.llm = ChatOpenAI(**openai_kwargs)
+            self.logger.info(f"Judge initialized with provider: {provider}, model: {model}")
         except Exception as e:
             # Fallback to default if config fails
+            self.logger.warning(f"Failed to load configuration, using defaults: {e}")
+            from langchain_openai import ChatOpenAI
             self.llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.0)
     else:
         self.llm = llm
@@ -250,14 +246,15 @@ plugin = JudgePlugin(
 | `llm` | `LLM` | `None` | LLM instance for evaluation (uses config if None) |
 | `logger` | `Logger` | `None` | Logger instance (creates default if None) |
 
-### LLM Configuration
+### Multi-Provider Configuration
 
-The plugin uses the global configuration system for LLM settings:
+The plugin uses the global configuration system for multi-provider LLM settings:
 
 ```json
 {
   "plugins": {
     "judge": {
+      "provider": "openai",
       "model": "gpt-4o-mini",
       "temperature": 0.0,
       "max_tokens": 1000,
@@ -270,13 +267,58 @@ The plugin uses the global configuration system for LLM settings:
 }
 ```
 
+### Provider-Specific Configuration Examples
+
+#### OpenAI Configuration
+```json
+{
+  "plugins": {
+    "judge": {
+      "provider": "openai",
+      "model": "gpt-4",
+      "temperature": 0.0,
+      "max_tokens": 1000
+    }
+  }
+}
+```
+
+#### Anthropic Configuration
+```json
+{
+  "plugins": {
+    "judge": {
+      "provider": "anthropic",
+      "model": "claude-3-sonnet",
+      "temperature": 0.0,
+      "max_tokens": 1000
+    }
+  }
+}
+```
+
+#### Ollama Configuration
+```json
+{
+  "plugins": {
+    "judge": {
+      "provider": "ollama",
+      "model": "llama3.1:8b",
+      "temperature": 0.0,
+      "max_tokens": 1000
+    }
+  }
+}
+```
+
 ### Custom LLM Configuration
 
 ```python
-from langchain_openai import ChatOpenAI
+from promptmatryoshka.llm_factory import LLMFactory
 
-# Custom LLM configuration
-custom_llm = ChatOpenAI(
+# Custom LLM configuration through factory
+custom_llm = LLMFactory.create_llm(
+    provider="openai",
     model="gpt-4",
     temperature=0.0,
     max_tokens=500

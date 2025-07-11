@@ -192,7 +192,7 @@ The system automatically resolves dependencies using topological sorting.
 
 ## Configuration
 
-Plugin configuration is managed through the global configuration system:
+Plugin configuration is managed through the global multi-provider configuration system:
 
 ```python
 from promptmatryoshka.config import get_config
@@ -202,9 +202,20 @@ model = config.get_model_for_plugin("logitranslate")
 settings = config.get_llm_settings_for_plugin("logitranslate")
 ```
 
-### Plugin-Specific Settings
+### Multi-Provider Support
 
-Each plugin can have custom configuration:
+The plugin system supports multiple LLM providers through the configuration system:
+
+```python
+# Get provider-specific configuration
+config = get_config()
+provider = config.get_provider_for_plugin("logitranslate")  # e.g., "openai", "anthropic", "ollama"
+model = config.get_model_for_plugin("logitranslate")        # e.g., "gpt-4", "claude-3-sonnet"
+```
+
+### Provider-Specific Plugin Configuration
+
+Each plugin can be configured with different providers and models:
 
 ```json
 {
@@ -217,9 +228,57 @@ Each plugin can have custom configuration:
       "num_eos": 5,
       "eos_token": "</s>",
       "mode": "append"
+    },
+    "logitranslate": {
+      "provider": "openai",
+      "model": "gpt-4",
+      "temperature": 0.0,
+      "max_tokens": 2000
+    },
+    "logiattack": {
+      "provider": "anthropic",
+      "model": "claude-3-sonnet",
+      "temperature": 0.0,
+      "max_tokens": 2000
+    },
+    "judge": {
+      "provider": "openai",
+      "model": "gpt-4o-mini",
+      "temperature": 0.0,
+      "max_tokens": 1000
     }
   }
 }
+```
+
+### Configuration Profiles
+
+The system supports configuration profiles for different use cases:
+
+```python
+# Use specific profiles for different plugins
+config = get_config()
+config.set_active_profile("research-openai")  # Use OpenAI for research
+# or
+config.set_active_profile("production-anthropic")  # Use Anthropic for production
+```
+
+### Provider Integration
+
+Plugins automatically integrate with the [LLMFactory](../providers.md#llmfactory) for provider abstraction:
+
+```python
+from promptmatryoshka.config import get_config
+from promptmatryoshka.llm_factory import LLMFactory
+
+# Plugin initialization with provider abstraction
+config = get_config()
+provider = config.get_provider_for_plugin("myplugin")
+model = config.get_model_for_plugin("myplugin")
+llm_settings = config.get_llm_settings_for_plugin("myplugin")
+
+# Create LLM instance through factory
+llm = LLMFactory.create_llm(provider, model, **llm_settings)
 ```
 
 ## Testing

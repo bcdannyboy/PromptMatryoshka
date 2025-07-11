@@ -16,14 +16,22 @@ import os
 from pathlib import Path
 
 from promptmatryoshka.plugins.base import (
-    PluginBase, 
-    PluginRegistry, 
+    PluginBase,
+    PluginRegistry,
     PluginValidationError,
     ValidationResult,
     get_plugin_registry,
     register_plugin
 )
 from promptmatryoshka.logging_utils import get_logger
+from promptmatryoshka.config import get_config, Config
+from promptmatryoshka.llm_factory import get_factory, LLMFactory
+from promptmatryoshka.exceptions import (
+    LLMError,
+    LLMConfigurationError,
+    LLMUnsupportedProviderError,
+    LLMValidationError
+)
 
 logger = get_logger("PromptMatryoshka")
 
@@ -225,7 +233,10 @@ class PromptMatryoshka:
 
     def __init__(self, plugins: Optional[List[Union[str, PluginBase]]] = None,
                  stages: Optional[List[PluginBase]] = None,  # For backward compatibility
-                 auto_discover: bool = True):
+                 auto_discover: bool = True,
+                 config_path: Optional[str] = None,
+                 provider: Optional[str] = None,
+                 profile: Optional[str] = None):
         """
         Initialize the PromptMatryoshka orchestrator.
         
@@ -233,10 +244,21 @@ class PromptMatryoshka:
             plugins: List of plugin names or instances to use. If None, uses auto-discovery.
             stages: List of plugin instances (deprecated, use plugins instead).
             auto_discover: Whether to automatically discover and register plugins.
+            config_path: Path to configuration file.
+            provider: Default provider to use for plugins.
+            profile: Default profile to use for plugins.
         """
         self.logger = get_logger("PromptMatryoshka")
         self.registry = get_plugin_registry()
         self.builder = PipelineBuilder(self.registry)
+        
+        # Initialize configuration and LLM factory
+        self.config = get_config(config_path or "config.json")
+        self.llm_factory = get_factory()
+        
+        # Store provider and profile preferences
+        self.default_provider = provider
+        self.default_profile = profile
         
         # Auto-discover plugins if requested
         if auto_discover:
@@ -347,13 +369,16 @@ class PromptMatryoshka:
         
         return plugin_instances
 
-    def jailbreak(self, prompt: str, plugins: Optional[List[Union[str, PluginBase]]] = None) -> str:
+    def jailbreak(self, prompt: str, plugins: Optional[List[Union[str, PluginBase]]] = None,
+                  provider: Optional[str] = None, profile: Optional[str] = None) -> str:
         """
         Runs the prompt through all pipeline stages and returns the result.
 
         Args:
             prompt (str): The input prompt to process.
             plugins: Optional override for the pipeline plugins.
+            provider: Optional provider override for this run.
+            profile: Optional profile override for this run.
 
         Returns:
             str: The final output after all pipeline stages.
@@ -368,7 +393,13 @@ class PromptMatryoshka:
             self.logger.warning("No plugins in pipeline, returning input unchanged")
             return prompt
         
-        self.logger.info(f"Running pipeline with {len(pipeline)} plugins")
+        # Use provided provider/profile or fall back to instance defaults
+        run_provider = provider or self.default_provider
+        run_profile = profile or self.default_profile
+        
+        self.logger.info(f"Running pipeline with {len(pipeline)} plugins"
+                        f"{f' (provider: {run_provider})' if run_provider else ''}"
+                        f"{f' (profile: {run_profile})' if run_profile else ''}")
         
         # Run the pipeline
         data = prompt
@@ -390,6 +421,15 @@ class PromptMatryoshka:
                             f"Plugin {plugin_name} input validation failed: "
                             f"{'; '.join(input_validation.errors)}"
                         )
+                
+                # Try to configure plugin with new LLM system if it supports it
+                if hasattr(stage, 'configure_llm') and (run_provider or run_profile):
+                    try:
+                        llm_interface = self._create_llm_for_plugin(plugin_name, run_provider, run_profile)
+                        if llm_interface:
+                            stage.configure_llm(llm_interface)
+                    except Exception as e:
+                        self.logger.warning(f"Failed to configure LLM for plugin {plugin_name}: {e}")
                 
                 # Run the plugin
                 data = stage.run(data)
@@ -451,3 +491,83 @@ class PromptMatryoshka:
         
         plugin_names = [plugin.get_plugin_name() for plugin in self.pipeline]
         return self.builder.validate_pipeline(plugin_names)
+    
+    def _create_llm_for_plugin(self, plugin_name: str, provider: Optional[str] = None,
+                               profile: Optional[str] = None) -> Optional[Any]:
+        """Create an LLM interface for a specific plugin using the new configuration system.
+        
+        Args:
+            plugin_name: Name of the plugin
+            provider: Optional provider override
+            profile: Optional profile override
+            
+        Returns:
+            LLM interface instance or None if creation fails
+        """
+        try:
+            # If profile is specified, use it
+            if profile:
+                self.logger.debug(f"Creating LLM for plugin {plugin_name} using profile {profile}")
+                return self.llm_factory.create_from_profile(profile)
+            
+            # If provider is specified, use it with plugin config
+            if provider:
+                self.logger.debug(f"Creating LLM for plugin {plugin_name} using provider {provider}")
+                plugin_config = self.config.get_plugin_config(plugin_name)
+                
+                if plugin_config:
+                    llm_config = {}
+                    for field in ["model", "temperature", "max_tokens", "top_p",
+                                 "frequency_penalty", "presence_penalty", "request_timeout"]:
+                        value = getattr(plugin_config, field, None)
+                        if value is not None:
+                            llm_config[field] = value
+                    
+                    # Use provider's default model if not specified
+                    if "model" not in llm_config:
+                        provider_config = self.config.get_provider_config(provider)
+                        if provider_config:
+                            llm_config["model"] = provider_config.default_model
+                    
+                    return self.llm_factory.create_interface(provider, llm_config)
+            
+            # Use the configuration system to create LLM for plugin
+            return self.config.create_llm_for_plugin(plugin_name)
+            
+        except Exception as e:
+            self.logger.warning(f"Failed to create LLM for plugin {plugin_name}: {e}")
+            return None
+    
+    def set_provider(self, provider: str) -> None:
+        """Set the default provider for the pipeline.
+        
+        Args:
+            provider: Provider name to use
+        """
+        self.default_provider = provider
+        self.logger.info(f"Default provider set to: {provider}")
+    
+    def set_profile(self, profile: str) -> None:
+        """Set the default profile for the pipeline.
+        
+        Args:
+            profile: Profile name to use
+        """
+        self.default_profile = profile
+        self.logger.info(f"Default profile set to: {profile}")
+    
+    def get_available_providers(self) -> List[str]:
+        """Get list of available providers.
+        
+        Returns:
+            List of provider names
+        """
+        return self.config.get_available_providers()
+    
+    def get_available_profiles(self) -> List[str]:
+        """Get list of available profiles.
+        
+        Returns:
+            List of profile names
+        """
+        return self.config.get_available_profiles()

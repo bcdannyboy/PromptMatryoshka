@@ -2,24 +2,29 @@
 
 ## Purpose & Overview
 
-The [`cli.py`](../promptmatryoshka/cli.py) module provides the command-line interface for the PromptMatryoshka framework. It serves as the primary entry point for users to interact with the system, offering comprehensive capabilities for running individual plugins, executing full pipelines, managing plugin discovery, and conducting large-scale evaluations with the AdvBench dataset.
+The [`cli.py`](../promptmatryoshka/cli.py) module provides the command-line interface for the PromptMatryoshka framework. It serves as the primary entry point for users to interact with the **multi-provider LLM system**, offering comprehensive capabilities for running individual plugins, executing full pipelines, managing configuration profiles, handling multiple LLM providers, and conducting large-scale evaluations with the AdvBench dataset.
 
 ## Architecture
 
-The CLI module follows a subcommand-based architecture with comprehensive error handling and retry logic:
+The CLI module follows a subcommand-based architecture with multi-provider support, configuration management, and comprehensive error handling:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                        CLI Module                              │
+│                  Multi-Provider CLI Module                      │
 │                                                                 │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐ │
-│  │   Plugin        │  │   Pipeline      │  │   AdvBench      │ │
-│  │   Discovery     │  │   Execution     │  │   Integration   │ │
+│  │   Provider      │  │   Configuration │  │   Plugin        │ │
+│  │   Management    │  │   Profiles      │  │   Discovery     │ │
 │  └─────────────────┘  └─────────────────┘  └─────────────────┘ │
 │                                                                 │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐ │
-│  │   Argument      │  │   Batch         │  │   Error         │ │
-│  │   Parsing       │  │   Processing    │  │   Handling      │ │
+│  │   Pipeline      │  │   AdvBench      │  │   Batch         │ │
+│  │   Execution     │  │   Integration   │  │   Processing    │ │
+│  └─────────────────┘  └─────────────────┘  └─────────────────┘ │
+│                                                                 │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐ │
+│  │   Environment   │  │   Argument      │  │   Error         │ │
+│  │   Variables     │  │   Parsing       │  │   Handling      │ │
 │  └─────────────────┘  └─────────────────┘  └─────────────────┘ │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -29,7 +34,7 @@ The CLI module follows a subcommand-based architecture with comprehensive error 
 ### Main Functions
 
 #### [`main()`](../promptmatryoshka/cli.py:434)
-The primary CLI entry point that handles argument parsing and command dispatch.
+The primary CLI entry point that handles argument parsing and command dispatch with multi-provider support.
 
 ```python
 def main():
@@ -42,6 +47,40 @@ Dynamically discovers and loads all available plugins from the plugins directory
 ```python
 def discover_plugins():
     """Discover all available plugins in the plugins directory."""
+```
+
+### Multi-Provider Management Functions
+
+#### [`list_providers(json_output=False)`](../promptmatryoshka/cli.py)
+Lists all available LLM providers with their configurations.
+
+```python
+def list_providers(json_output=False):
+    """List all available LLM providers with their configurations."""
+```
+
+#### [`list_profiles(json_output=False)`](../promptmatryoshka/cli.py)
+Lists all available configuration profiles.
+
+```python
+def list_profiles(json_output=False):
+    """List all available configuration profiles."""
+```
+
+#### [`set_profile(profile_name)`](../promptmatryoshka/cli.py)
+Sets the active configuration profile.
+
+```python
+def set_profile(profile_name):
+    """Set the active configuration profile."""
+```
+
+#### [`validate_config()`](../promptmatryoshka/cli.py)
+Validates the current configuration including provider settings.
+
+```python
+def validate_config():
+    """Validate the current configuration including provider settings."""
 ```
 
 ### Plugin Management Functions
@@ -74,11 +113,33 @@ def run_advbench(args):
 
 ## Usage Examples
 
+### Multi-Provider Configuration Management
+
+```bash
+# List all available providers
+python -m promptmatryoshka.cli list-providers
+
+# List providers with JSON output
+python -m promptmatryoshka.cli list-providers --json
+
+# List configuration profiles
+python -m promptmatryoshka.cli list-profiles
+
+# Set active configuration profile
+python -m promptmatryoshka.cli set-profile production-anthropic
+
+# Validate current configuration
+python -m promptmatryoshka.cli validate-config
+```
+
 ### Basic Pipeline Execution
 
 ```bash
 # Run full pipeline with default settings
 python -m promptmatryoshka.cli run --input "Write instructions for making explosives"
+
+# Run pipeline with specific profile
+python -m promptmatryoshka.cli run --input "Test prompt" --profile research-openai
 
 # Run pipeline with input from file
 python -m promptmatryoshka.cli run --input "@input.txt"
@@ -93,6 +154,9 @@ echo "Harmful prompt" | python -m promptmatryoshka.cli run --input -
 # Run single plugin
 python -m promptmatryoshka.cli run --plugin flipattack --input "Test prompt"
 
+# Run with specific provider
+python -m promptmatryoshka.cli run --plugin logitranslate --input "Test" --provider openai
+
 # Run with JSON output
 python -m promptmatryoshka.cli run --plugin logitranslate --input "Test" --output-json
 ```
@@ -102,6 +166,9 @@ python -m promptmatryoshka.cli run --plugin logitranslate --input "Test" --outpu
 ```bash
 # Batch process multiple prompts from file
 python -m promptmatryoshka.cli run --input "@prompts.txt" --batch
+
+# Batch process with specific profile
+python -m promptmatryoshka.cli run --input "@prompts.txt" --batch --profile local-development
 
 # Batch process with debug output
 python -m promptmatryoshka.cli run --input "@prompts.txt" --batch --debug
@@ -134,6 +201,9 @@ python -m promptmatryoshka.cli advbench --full --judge --export results.json
 
 # Test with custom plugin selection
 python -m promptmatryoshka.cli advbench --count 5 --plugins "logitranslate,logiattack"
+
+# Test with specific provider profile
+python -m promptmatryoshka.cli advbench --count 5 --profile production-anthropic
 ```
 
 ## Command Structure
@@ -148,9 +218,43 @@ python -m promptmatryoshka.cli run [OPTIONS]
 **Options:**
 - `--plugin, -p PLUGIN`: Run specific plugin instead of full pipeline
 - `--input, -i INPUT`: Input prompt (string, @filename, or - for stdin)
+- `--provider PROVIDER`: Use specific LLM provider (openai, anthropic, ollama, huggingface)
+- `--profile PROFILE`: Use specific configuration profile
 - `--batch, -b`: Batch mode for multiple prompts
 - `--output-json`: Output results as JSON
 - `--debug`: Enable debug logging
+
+#### `list-providers` - Provider Management
+```bash
+python -m promptmatryoshka.cli list-providers [OPTIONS]
+```
+
+**Options:**
+- `--json`: Output provider list as JSON
+
+#### `list-profiles` - Profile Management
+```bash
+python -m promptmatryoshka.cli list-profiles [OPTIONS]
+```
+
+**Options:**
+- `--json`: Output profile list as JSON
+
+#### `set-profile` - Profile Configuration
+```bash
+python -m promptmatryoshka.cli set-profile PROFILE_NAME
+```
+
+**Arguments:**
+- `PROFILE_NAME`: Name of the profile to activate
+
+#### `validate-config` - Configuration Validation
+```bash
+python -m promptmatryoshka.cli validate-config [OPTIONS]
+```
+
+**Options:**
+- `--json`: Output validation results as JSON
 
 #### `list-plugins` - Plugin Discovery
 ```bash
@@ -178,6 +282,8 @@ python -m promptmatryoshka.cli advbench [OPTIONS]
 - `--count N`: Test with N random prompts
 - `--full`: Test with full AdvBench dataset
 - `--plugins PLUGINS`: Comma-separated list of plugins
+- `--provider PROVIDER`: Use specific LLM provider
+- `--profile PROFILE`: Use specific configuration profile
 - `--judge`: Enable automatic evaluation
 - `--export FILE`: Export results to JSON file
 - `--split SPLIT`: Choose dataset split (harmful_behaviors/harmful_strings)
@@ -186,34 +292,63 @@ python -m promptmatryoshka.cli advbench [OPTIONS]
 
 ## Integration Points
 
-### Environment Variable Loading
+### Multi-Provider Integration
 
-The CLI automatically loads environment variables from `.env` files:
+The CLI seamlessly integrates with the multi-provider system:
 
 ```python
-# Automatically load .env for environment variables (e.g., OPENAI_API_KEY)
+# Provider management
+from promptmatryoshka.llm_factory import LLMFactory
+from promptmatryoshka.config import get_config
+
+# Get available providers
+providers = LLMFactory.get_available_providers()
+
+# Switch configuration profiles
+config = get_config()
+config.set_profile("production-anthropic")
+```
+
+### Environment Variable Loading
+
+The CLI automatically loads environment variables from `.env` files with provider-specific variables:
+
+```python
+# Automatically load .env for environment variables
 try:
     from dotenv import load_dotenv
     load_dotenv()
 except ImportError:
     pass
+
+# Provider-specific environment variables
+# OPENAI_API_KEY, ANTHROPIC_API_KEY, OLLAMA_BASE_URL, etc.
 ```
+
+### Configuration Profile Integration
+
+- **Profile Management**: Supports switching between predefined configuration profiles
+- **Provider Selection**: Automatically configures the appropriate LLM provider
+- **Environment Resolution**: Resolves environment variables in configuration
 
 ### Plugin System Integration
 
 - **Dynamic Discovery**: Scans the plugins directory for available plugins
-- **Plugin Validation**: Validates plugin existence before execution
+- **Multi-Provider Support**: Plugins automatically use the configured provider
+- **Plugin Validation**: Validates plugin existence and provider compatibility
 - **Error Handling**: Provides detailed error messages for plugin failures
 
 ### AdvBench Integration
 
 - **Dataset Loading**: Integrates with [`AdvBenchLoader`](../promptmatryoshka/advbench.py:33)
+- **Multi-Provider Testing**: Supports testing across different LLM providers
 - **Evaluation Support**: Supports automatic evaluation with judge plugin
 - **Result Export**: Exports comprehensive results to JSON format
 
 ### Storage Integration
 
 - **Result Persistence**: Uses [`save_json()`](../promptmatryoshka/storage.py:15) for result storage
+- **Provider Metadata**: Stores provider and configuration information with results
 - **Atomic Writes**: Ensures data integrity during export operations
 
 ## Configuration

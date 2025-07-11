@@ -1,43 +1,162 @@
 {
   "_comment": "PromptMatryoshka Configuration Template",
-  "_instructions": "Copy this file to 'config.json' and modify the values as needed",
+  "_instructions": "Copy this file to 'config.json' and modify the values as needed. Set your API keys as environment variables.",
   
-  "models": {
-    "_comment": "Model names for different plugins",
-    "logitranslate_model": "gpt-4o-mini",
-    "logiattack_model": "gpt-4o-mini",
-    "judge_model": "gpt-4o-mini"
+  "providers": {
+    "_comment": "Multi-provider LLM configurations with authentication and rate limiting",
+    "openai": {
+      "api_key": "${OPENAI_API_KEY}",
+      "base_url": "https://api.openai.com/v1",
+      "default_model": "gpt-4o-mini",
+      "organization": "${OPENAI_ORG_ID}",
+      "timeout": 120,
+      "max_retries": 3,
+      "retry_delay": 1.0,
+      "rate_limit": {
+        "requests_per_minute": 500,
+        "tokens_per_minute": 150000
+      },
+      "custom_headers": {
+        "User-Agent": "PromptMatryoshka/1.0"
+      }
+    },
+    "anthropic": {
+      "api_key": "${ANTHROPIC_API_KEY}",
+      "base_url": "https://api.anthropic.com",
+      "default_model": "claude-3-5-sonnet-20241022",
+      "timeout": 120,
+      "max_retries": 3,
+      "retry_delay": 1.0,
+      "rate_limit": {
+        "requests_per_minute": 100,
+        "tokens_per_minute": 50000
+      }
+    },
+    "ollama": {
+      "_comment": "Local Ollama instance - no API key required",
+      "base_url": "http://localhost:11434",
+      "default_model": "llama3.2:3b",
+      "timeout": 300,
+      "max_retries": 2,
+      "retry_delay": 2.0
+    },
+    "huggingface": {
+      "api_key": "${HUGGINGFACE_API_KEY}",
+      "base_url": "https://api-inference.huggingface.co",
+      "default_model": "microsoft/DialoGPT-medium",
+      "timeout": 120,
+      "max_retries": 3,
+      "retry_delay": 1.0
+    }
   },
   
-  "llm_settings": {
-    "_comment": "Global LLM settings applied to all plugins unless overridden",
-    "temperature": 0.0,
-    "max_tokens": 2000,
-    "top_p": 1.0,
-    "frequency_penalty": 0.0,
-    "presence_penalty": 0.0,
-    "request_timeout": 120
-  },
-  
-  "plugin_settings": {
-    "_comment": "Plugin-specific settings override global settings",
-    "logitranslate": {
-      "model": "gpt-4o-mini",
+  "profiles": {
+    "_comment": "Named profiles for different use cases - combine provider + model + settings",
+    "research-openai": {
+      "provider": "openai",
+      "model": "gpt-4o",
+      "temperature": 0.0,
+      "max_tokens": 4000,
+      "top_p": 1.0,
+      "frequency_penalty": 0.0,
+      "presence_penalty": 0.0,
+      "request_timeout": 120,
+      "description": "High-quality research profile using OpenAI GPT-4o"
+    },
+    "production-anthropic": {
+      "provider": "anthropic",
+      "model": "claude-3-5-sonnet-20241022",
+      "temperature": 0.0,
+      "max_tokens": 4000,
+      "top_p": 1.0,
+      "request_timeout": 120,
+      "description": "Production profile using Anthropic Claude"
+    },
+    "local-development": {
+      "provider": "ollama",
+      "model": "llama3.2:3b",
+      "temperature": 0.1,
+      "max_tokens": 2000,
+      "top_p": 0.9,
+      "request_timeout": 300,
+      "description": "Local development profile using Ollama"
+    },
+    "fast-gpt35": {
+      "provider": "openai",
+      "model": "gpt-3.5-turbo",
       "temperature": 0.0,
       "max_tokens": 2000,
-      "validation_enabled": true
+      "top_p": 1.0,
+      "frequency_penalty": 0.0,
+      "presence_penalty": 0.0,
+      "request_timeout": 60,
+      "description": "Fast and cost-effective profile using GPT-3.5"
+    },
+    "creative-anthropic": {
+      "provider": "anthropic",
+      "model": "claude-3-5-sonnet-20241022",
+      "temperature": 0.7,
+      "max_tokens": 4000,
+      "top_p": 0.9,
+      "request_timeout": 120,
+      "description": "Creative profile using Anthropic Claude with higher temperature"
+    },
+    "local-llama": {
+      "provider": "ollama",
+      "model": "llama3.2:8b",
+      "temperature": 0.2,
+      "max_tokens": 3000,
+      "top_p": 0.8,
+      "request_timeout": 300,
+      "description": "Local Llama 8B model for more capable local processing"
+    }
+  },
+  
+  "plugins": {
+    "_comment": "Plugin-specific configurations with technique parameters",
+    "logitranslate": {
+      "_comment": "LogiTranslate: Translates prompts to formal logic",
+      "profile": "research-openai",
+      "technique_params": {
+        "validation_enabled": true,
+        "max_attempts": 3,
+        "retry_delay": 1.0,
+        "schema_strict": true
+      }
     },
     "logiattack": {
-      "model": "gpt-4o-mini",
-      "temperature": 0.0,
-      "max_tokens": 2000,
-      "validation_enabled": true
+      "_comment": "LogiAttack: Converts formal logic to actionable instructions",
+      "profile": "research-openai",
+      "technique_params": {
+        "validation_enabled": true,
+        "schema_strict": true,
+        "max_attempts": 2
+      }
     },
     "judge": {
-      "model": "gpt-4o-mini",
-      "temperature": 0.0,
-      "max_tokens": 1000,
-      "validation_enabled": true
+      "_comment": "Judge: Evaluates response safety and jailbreak success",
+      "profile": "production-anthropic",
+      "technique_params": {
+        "threshold": 0.8,
+        "multi_judge": true,
+        "strict_evaluation": true
+      }
+    },
+    "boost": {
+      "_comment": "Boost: Appends EOS tokens to prompts (no LLM required)",
+      "technique_params": {
+        "mode": "append",
+        "num_eos": 5,
+        "eos_token": "</s>",
+        "storage_dir": "boost_results"
+      }
+    },
+    "flipattack": {
+      "_comment": "FlipAttack: Text obfuscation by reversing order (no LLM required)",
+      "technique_params": {
+        "mode": "char",
+        "storage_dir": "flipattack_results"
+      }
     }
   },
   
@@ -56,16 +175,24 @@
   },
   
   "_examples": {
-    "_comment": "Example configurations for different use cases",
+    "_comment": "Example configurations for different scenarios",
     "development": {
-      "models": {
-        "logitranslate_model": "gpt-4o-mini",
-        "logiattack_model": "gpt-4o-mini",
-        "judge_model": "gpt-4o-mini"
+      "_comment": "Development configuration using local models",
+      "profiles": {
+        "dev-local": {
+          "provider": "ollama",
+          "model": "llama3.2:3b",
+          "temperature": 0.1,
+          "max_tokens": 1500
+        }
       },
-      "llm_settings": {
-        "temperature": 0.1,
-        "max_tokens": 1500
+      "plugins": {
+        "logitranslate": {
+          "profile": "dev-local"
+        },
+        "logiattack": {
+          "profile": "dev-local"
+        }
       },
       "logging": {
         "level": "DEBUG",
@@ -73,14 +200,31 @@
       }
     },
     "production": {
-      "models": {
-        "logitranslate_model": "gpt-4",
-        "logiattack_model": "gpt-4",
-        "judge_model": "gpt-4"
+      "_comment": "Production configuration with high-quality models",
+      "profiles": {
+        "prod-openai": {
+          "provider": "openai",
+          "model": "gpt-4",
+          "temperature": 0.0,
+          "max_tokens": 4000
+        },
+        "prod-anthropic": {
+          "provider": "anthropic",
+          "model": "claude-3-5-sonnet-20241022",
+          "temperature": 0.0,
+          "max_tokens": 4000
+        }
       },
-      "llm_settings": {
-        "temperature": 0.0,
-        "max_tokens": 4000
+      "plugins": {
+        "logitranslate": {
+          "profile": "prod-openai"
+        },
+        "logiattack": {
+          "profile": "prod-openai"
+        },
+        "judge": {
+          "profile": "prod-anthropic"
+        }
       },
       "logging": {
         "level": "INFO",
@@ -88,15 +232,93 @@
       }
     },
     "cost_optimized": {
-      "models": {
-        "logitranslate_model": "gpt-3.5-turbo",
-        "logiattack_model": "gpt-3.5-turbo",
-        "judge_model": "gpt-3.5-turbo"
+      "_comment": "Cost-optimized configuration using smaller models",
+      "profiles": {
+        "budget-gpt35": {
+          "provider": "openai",
+          "model": "gpt-3.5-turbo",
+          "temperature": 0.0,
+          "max_tokens": 1000
+        }
       },
-      "llm_settings": {
-        "temperature": 0.0,
-        "max_tokens": 1000
+      "plugins": {
+        "logitranslate": {
+          "profile": "budget-gpt35"
+        },
+        "logiattack": {
+          "profile": "budget-gpt35"
+        },
+        "judge": {
+          "profile": "budget-gpt35"
+        }
+      }
+    },
+    "mixed_providers": {
+      "_comment": "Example using different providers for different plugins",
+      "profiles": {
+        "openai-research": {
+          "provider": "openai",
+          "model": "gpt-4o",
+          "temperature": 0.0,
+          "max_tokens": 4000
+        },
+        "anthropic-judge": {
+          "provider": "anthropic",
+          "model": "claude-3-5-sonnet-20241022",
+          "temperature": 0.0,
+          "max_tokens": 2000
+        },
+        "local-dev": {
+          "provider": "ollama",
+          "model": "llama3.2:8b",
+          "temperature": 0.1,
+          "max_tokens": 3000
+        }
+      },
+      "plugins": {
+        "logitranslate": {
+          "profile": "openai-research"
+        },
+        "logiattack": {
+          "profile": "openai-research"
+        },
+        "judge": {
+          "profile": "anthropic-judge"
+        },
+        "boost": {
+          "technique_params": {
+            "mode": "append",
+            "num_eos": 3
+          }
+        },
+        "flipattack": {
+          "technique_params": {
+            "mode": "word"
+          }
+        }
       }
     }
+  },
+  
+  "_environment_variables": {
+    "_comment": "Required environment variables - set these in your .env file",
+    "OPENAI_API_KEY": "Your OpenAI API key",
+    "ANTHROPIC_API_KEY": "Your Anthropic API key",
+    "HUGGINGFACE_API_KEY": "Your HuggingFace API key (optional)",
+    "OPENAI_ORG_ID": "Your OpenAI organization ID (optional)"
+  },
+  
+  "_migration_notes": {
+    "_comment": "Notes for migrating from legacy configuration format",
+    "legacy_support": "The new configuration system maintains backward compatibility with the old format",
+    "automatic_conversion": "Legacy configs are automatically converted to the new format",
+    "new_features": [
+      "Multi-provider support (OpenAI, Anthropic, Ollama, HuggingFace)",
+      "Named profiles for different use cases",
+      "Plugin-specific configuration overrides",
+      "Environment variable resolution",
+      "Rate limiting configuration",
+      "Comprehensive validation"
+    ]
   }
 }

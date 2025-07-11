@@ -103,9 +103,9 @@ Instructions:
 5. Never explain any part of the logical structure or query outside of the gap analysis section, the `<ASSISTANT_RESP>` should always and exclusively be the complete response as the assistant with no omissions.
 ```
 
-### LLM Integration and Configuration
+### Multi-Provider LLM Integration
 
-The plugin integrates with the configuration system for flexible LLM selection:
+The plugin integrates with the multi-provider configuration system for flexible LLM selection:
 
 ```python
 def __init__(self, llm=None, sys_prompt=None, logger=None):
@@ -117,25 +117,19 @@ def __init__(self, llm=None, sys_prompt=None, logger=None):
     if llm is None:
         try:
             config = get_config()
+            provider = config.get_provider_for_plugin("logiattack")
             model = config.get_model_for_plugin("logiattack")
             llm_settings = config.get_llm_settings_for_plugin("logiattack")
             
-            # Extract relevant settings for ChatOpenAI
-            openai_kwargs = {
-                "model": model,
-                "temperature": llm_settings.get("temperature", 0.0),
-                "max_tokens": llm_settings.get("max_tokens", 2000),
-                "top_p": llm_settings.get("top_p", 1.0),
-                "frequency_penalty": llm_settings.get("frequency_penalty", 0.0),
-                "presence_penalty": llm_settings.get("presence_penalty", 0.0),
-                "request_timeout": llm_settings.get("request_timeout", 120)
-            }
+            # Create LLM instance through factory pattern
+            from promptmatryoshka.llm_factory import LLMFactory
+            self.llm = LLMFactory.create_llm(provider, model, **llm_settings)
             
-            self.llm = ChatOpenAI(**openai_kwargs)
-            self.logger.info(f"LogiAttack initialized with model: {model}")
+            self.logger.info(f"LogiAttack initialized with provider: {provider}, model: {model}")
         except Exception as e:
             # Fallback to default if config fails
             self.logger.warning(f"Failed to load configuration, using defaults: {e}")
+            from langchain_openai import ChatOpenAI
             self.llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.0)
     else:
         self.llm = llm
@@ -298,14 +292,15 @@ plugin = LogiAttackPlugin(
 | `sys_prompt` | `str` | `None` | System prompt override (loads from file if None) |
 | `logger` | `Logger` | `None` | Logger instance (creates default if None) |
 
-### LLM Configuration
+### Multi-Provider Configuration
 
-The plugin uses the global configuration system for LLM settings:
+The plugin uses the global configuration system for multi-provider LLM settings:
 
 ```json
 {
   "plugins": {
     "logiattack": {
+      "provider": "openai",
       "model": "gpt-4o-mini",
       "temperature": 0.0,
       "max_tokens": 2000,
@@ -318,13 +313,58 @@ The plugin uses the global configuration system for LLM settings:
 }
 ```
 
+### Provider-Specific Configuration Examples
+
+#### OpenAI Configuration
+```json
+{
+  "plugins": {
+    "logiattack": {
+      "provider": "openai",
+      "model": "gpt-4",
+      "temperature": 0.0,
+      "max_tokens": 2000
+    }
+  }
+}
+```
+
+#### Anthropic Configuration
+```json
+{
+  "plugins": {
+    "logiattack": {
+      "provider": "anthropic",
+      "model": "claude-3-sonnet",
+      "temperature": 0.0,
+      "max_tokens": 2000
+    }
+  }
+}
+```
+
+#### Ollama Configuration
+```json
+{
+  "plugins": {
+    "logiattack": {
+      "provider": "ollama",
+      "model": "llama3.1:8b",
+      "temperature": 0.0,
+      "max_tokens": 2000
+    }
+  }
+}
+```
+
 ### Custom LLM Configuration
 
 ```python
-from langchain_openai import ChatOpenAI
+from promptmatryoshka.llm_factory import LLMFactory
 
-# Custom LLM configuration
-custom_llm = ChatOpenAI(
+# Custom LLM configuration through factory
+custom_llm = LLMFactory.create_llm(
+    provider="openai",
     model="gpt-4",
     temperature=0.0,
     max_tokens=3000

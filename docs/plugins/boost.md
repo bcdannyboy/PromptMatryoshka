@@ -447,6 +447,28 @@ plugin = BoostPlugin(
 )
 ```
 
+### Multi-Provider Pipeline Integration
+
+The BOOST plugin works seamlessly with multi-provider pipelines:
+
+```python
+from promptmatryoshka.config import get_config
+from promptmatryoshka.plugins.boost import BoostPlugin
+from promptmatryoshka.plugins.logitranslate import LogiTranslatePlugin
+
+# Configure different providers for different stages
+config = get_config()
+config.set_active_profile("mixed-providers")
+
+# BOOST doesn't use LLMs, so it works with any provider configuration
+boost_plugin = BoostPlugin(mode="append", num_eos=3)
+boosted_prompt = boost_plugin.run("Original prompt")
+
+# LogiTranslate will use the configured provider (e.g., OpenAI)
+logitranslate_plugin = LogiTranslatePlugin()
+logic_schema = logitranslate_plugin.run(boosted_prompt)
+```
+
 ### With Logging System
 
 ```python

@@ -1,9 +1,15 @@
 # Core dependencies
-langchain-openai
-langchain-core
+langchain-core>=0.3.0
+langchain-openai>=0.2.0
+langchain-anthropic>=0.2.0
+langchain-ollama>=0.2.0
+langchain-huggingface>=0.1.0
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
 python-dotenv
 datasets
 
 # Optional dependencies for development
 pytest
 pytest-cov
+pytest-asyncio>=0.21.0

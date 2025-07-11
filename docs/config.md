@@ -2,30 +2,30 @@
 
 ## Purpose & Overview
 
-The [`config.py`](../promptmatryoshka/config.py) module provides centralized configuration management for the PromptMatryoshka framework. It handles model selection, plugin-specific settings, runtime parameters, and provides a robust configuration system with validation, defaults, and error handling. This module ensures consistent configuration across all components of the framework.
+The [`config.py`](../promptmatryoshka/config.py) module provides centralized configuration management for the PromptMatryoshka framework. It handles **multi-provider LLM support**, configuration profiles, plugin-specific settings, and runtime parameters through a sophisticated configuration system with validation, defaults, and error handling. This module enables seamless switching between different LLM providers (OpenAI, Anthropic, Ollama, HuggingFace) and supports predefined configuration profiles for common use cases.
 
 ## Architecture
 
-The configuration system follows a hierarchical structure with defaults, file-based overrides, and plugin-specific settings:
+The configuration system follows a multi-layered architecture with provider abstraction, profile management, and environment variable support:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                    Configuration System                        │
+│                Multi-Provider Configuration System              │
 │                                                                 │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐ │
-│  │   Default       │  │   File-based    │  │   Plugin        │ │
-│  │   Configuration │  │   Configuration │  │   Configuration │ │
+│  │   Environment   │  │   Configuration │  │   Provider      │ │
+│  │   Variables     │  │   Profiles      │  │   Registry      │ │
 │  │                 │  │                 │  │                 │ │
-│  │   • Models      │  │   • Overrides   │  │   • Per-plugin  │ │
-│  │   • LLM Settings│  │   • Validation  │  │   • Settings    │ │
-│  │   • Logging     │  │   • Merging     │  │   • Inheritance │ │
-│  │   • Storage     │  │                 │  │                 │ │
+│  │   • API Keys    │  │   • Research    │  │   • OpenAI      │ │
+│  │   • Endpoints   │  │   • Production  │  │   • Anthropic   │ │
+│  │   • Settings    │  │   • Local Dev   │  │   • Ollama      │ │
+│  │   • Validation  │  │   • Testing     │  │   • HuggingFace │ │
 │  └─────────────────┘  └─────────────────┘  └─────────────────┘ │
 │                                 │                               │
 │                                 ▼                               │
 │  ┌─────────────────────────────────────────────────────────┐   │
 │  │              Merged Configuration                       │   │
-│  │              with Plugin Resolution                     │   │
+│  │              with Provider Resolution                   │   │
 │  └─────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -34,7 +34,7 @@ The configuration system follows a hierarchical structure with defaults, file-ba
 
 ### Config Class
 
-The main configuration management class that provides centralized access to all configuration values.
+The main configuration management class that provides centralized access to all configuration values with **multi-provider support**.
 
 ```python
 class Config:
@@ -48,8 +48,27 @@ class Config:
 - [`get_plugin_config(plugin_name)`](../promptmatryoshka/config.py:210): Gets configuration for a specific plugin
 - [`get_model_for_plugin(plugin_name)`](../promptmatryoshka/config.py:222): Gets model name for a specific plugin
 - [`get_llm_settings_for_plugin(plugin_name)`](../promptmatryoshka/config.py:241): Gets LLM settings for a specific plugin
+- [`get_provider_settings(provider_name)`](../promptmatryoshka/config.py): Gets settings for a specific LLM provider
+- [`get_active_profile()`](../promptmatryoshka/config.py): Gets the currently active configuration profile
+- [`set_profile(profile_name)`](../promptmatryoshka/config.py): Switches to a different configuration profile
 - [`reload()`](../promptmatryoshka/config.py:262): Reloads configuration from file
 - [`to_dict()`](../promptmatryoshka/config.py:271): Returns complete configuration as dictionary
+
+### LLMFactory Class
+
+Factory class for creating provider-specific LLM instances with automatic configuration.
+
+```python
+class LLMFactory:
+    @staticmethod
+    def create_llm(provider: str, model: str, **kwargs) -> LLMInterface
+```
+
+**Key Methods:**
+
+- [`create_llm(provider, model, **kwargs)`](../promptmatryoshka/llm_factory.py): Creates an LLM instance for the specified provider
+- [`get_available_providers()`](../promptmatryoshka/llm_factory.py): Returns list of available LLM providers
+- [`validate_provider_config(provider, config)`](../promptmatryoshka/llm_factory.py): Validates provider-specific configuration
 
 ### Exception Classes
 
@@ -62,50 +81,72 @@ class Config:
 
 ## Usage Examples
 
-### Basic Configuration Usage
+### Basic Multi-Provider Configuration
 
 ```python
 from promptmatryoshka.config import get_config
+from promptmatryoshka.llm_factory import LLMFactory
 
 # Get the global configuration instance
 config = get_config()
 
-# Get a configuration value
-model_name = config.get("models.logitranslate_model")
-print(f"LogiTranslate model: {model_name}")
+# Get current active profile
+profile = config.get_active_profile()
+print(f"Active profile: {profile}")
 
-# Get with default value
-temperature = config.get("llm_settings.temperature", 0.7)
+# Switch to a different profile
+config.set_profile("production-anthropic")
+
+# Get provider-specific settings
+openai_settings = config.get_provider_settings("openai")
+anthropic_settings = config.get_provider_settings("anthropic")
 ```
 
-### Plugin-Specific Configuration
+### Multi-Provider Plugin Configuration
 
 ```python
-# Get configuration for a specific plugin
+# Get configuration for a specific plugin with provider support
 plugin_config = config.get_plugin_config("logitranslate")
 print(f"LogiTranslate config: {plugin_config}")
 
-# Get model for a specific plugin
+# Get model for a specific plugin (now supports multiple providers)
 model = config.get_model_for_plugin("logiattack")
-print(f"LogiAttack model: {model}")
+provider = config.get_provider_for_plugin("logiattack")
+print(f"LogiAttack model: {model} (Provider: {provider})")
 
-# Get LLM settings for a plugin
-llm_settings = config.get_llm_settings_for_plugin("judge")
-print(f"Judge LLM settings: {llm_settings}")
+# Create LLM instance using factory
+llm = LLMFactory.create_llm(
+    provider="openai",
+    model="gpt-4o-mini",
+    temperature=0.0
+)
 ```
 
-### Configuration Management
+### Configuration Profiles
 
 ```python
-# Reload configuration from file
-config.reload()
+# List available profiles
+profiles = config.get_available_profiles()
+print(f"Available profiles: {profiles}")
 
-# Get complete configuration as dictionary
-full_config = config.to_dict()
+# Switch between profiles
+config.set_profile("research-openai")    # For research with OpenAI
+config.set_profile("production-anthropic")  # For production with Anthropic
+config.set_profile("local-development")  # For local development with Ollama
 
-# Load a custom configuration file
-from promptmatryoshka.config import load_config
-custom_config = load_config("custom_config.json")
+# Get profile-specific settings
+research_settings = config.get_profile_settings("research-openai")
+```
+
+### Environment Variable Integration
+
+```python
+# Environment variables are automatically resolved
+# ${OPENAI_API_KEY} in config becomes the actual API key
+api_key = config.get("providers.openai.api_key")  # Resolves ${OPENAI_API_KEY}
+
+# Custom environment variable resolution
+custom_model = config.get("models.custom_model")  # Resolves ${CUSTOM_MODEL}
 ```
 
 ## Integration Points
@@ -152,40 +193,94 @@ Configuration manages storage settings:
 
 ## Configuration Structure
 
-### Default Configuration
+### Multi-Provider Configuration
 
-The system provides comprehensive defaults:
+The system now supports sophisticated multi-provider configurations with profiles and environment variables:
 
 ```json
 {
-    "models": {
-        "logitranslate_model": "gpt-4o-mini",
-        "logiattack_model": "gpt-4o-mini",
-        "judge_model": "gpt-4o-mini"
+    "active_profile": "research-openai",
+    "profiles": {
+        "research-openai": {
+            "provider": "openai",
+            "model": "gpt-4o-mini",
+            "temperature": 0.0,
+            "max_tokens": 2000,
+            "description": "Research configuration using OpenAI"
+        },
+        "production-anthropic": {
+            "provider": "anthropic",
+            "model": "claude-3-sonnet-20240229",
+            "temperature": 0.0,
+            "max_tokens": 2000,
+            "description": "Production configuration using Anthropic"
+        },
+        "local-development": {
+            "provider": "ollama",
+            "model": "llama2:7b",
+            "temperature": 0.0,
+            "max_tokens": 2000,
+            "description": "Local development with Ollama"
+        }
     },
-    "llm_settings": {
-        "temperature": 0.0,
-        "max_tokens": 2000,
-        "top_p": 1.0,
-        "frequency_penalty": 0.0,
-        "presence_penalty": 0.0,
-        "request_timeout": 120
+    "providers": {
+        "openai": {
+            "api_key": "${OPENAI_API_KEY}",
+            "organization": "${OPENAI_ORG_ID}",
+            "base_url": "https://api.openai.com/v1",
+            "models": {
+                "gpt-4o-mini": {
+                    "context_window": 128000,
+                    "max_tokens": 16384
+                },
+                "gpt-4o": {
+                    "context_window": 128000,
+                    "max_tokens": 4096
+                }
+            }
+        },
+        "anthropic": {
+            "api_key": "${ANTHROPIC_API_KEY}",
+            "base_url": "https://api.anthropic.com",
+            "models": {
+                "claude-3-sonnet-20240229": {
+                    "context_window": 200000,
+                    "max_tokens": 4096
+                },
+                "claude-3-haiku-20240307": {
+                    "context_window": 200000,
+                    "max_tokens": 4096
+                }
+            }
+        },
+        "ollama": {
+            "base_url": "${OLLAMA_BASE_URL}",
+            "models": {
+                "llama2:7b": {
+                    "context_window": 4096,
+                    "max_tokens": 2048
+                }
+            }
+        }
     },
     "plugin_settings": {
         "logitranslate": {
+            "provider": "openai",
             "model": "gpt-4o-mini",
             "temperature": 0.0,
             "max_tokens": 2000,
             "validation_enabled": true
         },
         "logiattack": {
+            "provider": "openai",
             "model": "gpt-4o-mini",
             "temperature": 0.0,
             "max_tokens": 2000,
             "validation_enabled": true
         },
         "judge": {
-            "model": "gpt-4o-mini",
+            "provider": "anthropic",
+            "model": "claude-3-sonnet-20240229",
             "temperature": 0.0,
             "max_tokens": 1000,
             "validation_enabled": true
@@ -204,35 +299,94 @@ The system provides comprehensive defaults:
 }
 ```
 
-### Plugin-Specific Configuration
+### Configuration Profiles
 
-Plugin settings support inheritance and override patterns:
+The system supports predefined configuration profiles for different use cases:
 
 ```json
 {
-    "plugin_settings": {
-        "logitranslate": {
+    "profiles": {
+        "research-openai": {
+            "provider": "openai",
             "model": "gpt-4o-mini",
             "temperature": 0.0,
-            "max_tokens": 2000,
-            "validation_enabled": true,
-            "custom_setting": "value"
+            "description": "Research configuration using OpenAI"
+        },
+        "production-anthropic": {
+            "provider": "anthropic",
+            "model": "claude-3-sonnet-20240229",
+            "temperature": 0.0,
+            "description": "Production configuration using Anthropic"
+        },
+        "local-development": {
+            "provider": "ollama",
+            "model": "llama2:7b",
+            "temperature": 0.0,
+            "description": "Local development with Ollama"
         }
     }
 }
 ```
 
-### Dot Notation Access
+### Environment Variable Resolution
 
-Configuration values can be accessed using dot notation:
+The system automatically resolves environment variables in configuration:
+
+```json
+{
+    "providers": {
+        "openai": {
+            "api_key": "${OPENAI_API_KEY}",
+            "organization": "${OPENAI_ORG_ID}"
+        },
+        "anthropic": {
+            "api_key": "${ANTHROPIC_API_KEY}"
+        }
+    }
+}
+```
+
+### Multi-Provider Plugin Configuration
+
+Plugin settings now support provider-specific configurations:
+
+```json
+{
+    "plugin_settings": {
+        "logitranslate": {
+            "provider": "openai",
+            "model": "gpt-4o-mini",
+            "temperature": 0.0,
+            "max_tokens": 2000,
+            "validation_enabled": true,
+            "custom_setting": "value"
+        },
+        "judge": {
+            "provider": "anthropic",
+            "model": "claude-3-sonnet-20240229",
+            "temperature": 0.0,
+            "max_tokens": 1000
+        }
+    }
+}
+```
+
+### Advanced Access Patterns
+
+Configuration values can be accessed using multiple patterns:
 
 ```python
-# These are equivalent
-temperature = config.get("llm_settings.temperature")
-temperature = config.get("llm_settings")["temperature"]
+# Dot notation access
+temperature = config.get("providers.openai.temperature")
+profile_settings = config.get("profiles.research-openai")
 
-# Plugin-specific access
-plugin_model = config.get("plugin_settings.logitranslate.model")
+# Provider-specific access
+openai_settings = config.get_provider_settings("openai")
+anthropic_models = config.get("providers.anthropic.models")
+
+# Profile-based access
+config.set_profile("production-anthropic")
+current_model = config.get_model_for_plugin("logitranslate")
 ```
 
 ## Error Handling
