@@ -8,13 +8,13 @@ PromptMatryoshka is a sophisticated research framework for studying and implemen
 
 ## 🎯 Overview & Purpose
 
-PromptMatryoshka serves as both a research tool and reference implementation for compositional jailbreak attacks. It addresses the critical need in AI safety research for systematic evaluation of LLM robustness against sophisticated adversarial prompting techniques.
+PromptMatryoshka serves as both a research tool and reference implementation for compositional jailbreak attacks.
 
 ### Key Features
 
-- **🔄 Fixed Multi-Stage Pipeline**: FlipAttack → LogiTranslate → BOOST → LogiAttack
+- **🔄 Fixed Multi-Stage Demo Pipeline**: FlipAttack → LogiTranslate → BOOST → LogiAttack
 - **📚 Research-Grade Implementation**: Direct implementation of three peer-reviewed research papers
-- **🔧 Sophisticated Plugin System**: Modular architecture with 5 specialized plugins
+- **🔧 Sophisticated Plugin System**: Modular architecture with 5+ specialized plugins
 - **🎯 AdvBench Integration**: Standardized evaluation using the AdvBench harmful behaviors dataset
 - **📊 Comprehensive Logging**: Full audit trail and reproducibility support
 - **🔍 Automatic Evaluation**: Built-in judge model for safety assessment
@@ -72,7 +72,7 @@ The framework employs a **compositional approach** where each technique addresse
 
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/yourrepo/promptmatryoshka.git
+   git clone https://github.com/bcdannyboy/promptmatryoshka.git
    cd promptmatryoshka
    ```
 
@@ -407,40 +407,6 @@ boost_plugin = BoostPlugin(
 
 ## 🔧 For Developers & Contributors
 
-### Project Structure
-
-```
-promptmatryoshka/
-├── promptmatryoshka/           # Main package
-│   ├── __init__.py
-│   ├── cli.py                  # Command-line interface
-│   ├── core.py                 # Pipeline orchestration
-│   ├── config.py               # Configuration management
-│   ├── llm_interface.py        # LLM interaction layer
-│   ├── logging_utils.py        # Logging utilities
-│   ├── storage.py              # Data storage utilities
-│   ├── advbench.py             # AdvBench integration
-│   └── plugins/                # Plugin implementations
-│       ├── __init__.py
-│       ├── base.py             # Plugin base class
-│       ├── flipattack.py       # FlipAttack plugin
-│       ├── logitranslate.py    # LogiTranslate plugin
-│       ├── boost.py            # BOOST plugin
-│       ├── logiattack.py       # LogiAttack plugin
-│       └── judge.py            # Judge plugin
-├── techniques/                 # Research papers and documentation
-│   ├── BOOST.pdf
-│   ├── flipattack.pdf
-│   └── logijailbreak/
-│       ├── logijailbreak.pdf
-│       ├── SYSPROMPT_LogiTranslate.md
-│       ├── SYSPROMPT_LogiAttack.md
-│       └── examples.md
-├── tests/                      # Test suites
-│   ├── test_*.py              # Unit and integration tests
-└── config.json                # Configuration file
-```
-
 ### Adding New Plugins
 
 1. **Create Plugin Class**:
@@ -618,9 +584,9 @@ If you use PromptMatryoshka in your research, please cite this repository:
 ```bibtex
 @software{promptmatryoshka2025,
   title = {Prompt Matryoshka: Multi-Stage Jailbreak Architecture for LLMs},
-  author = {YourSurname, YourGivenName},
+  author = {Bloom, Daniel},
   year = {2025},
-  url = {https://github.com/yourrepo/promptmatryoshka},
+  url = {https://github.com/bcdannyboy/promptmatryoshka},
   version = {1.0},
   abstract = {Prompt Matryoshka is a research framework and reference implementation for a compositional, multi-layered jailbreak attack on Large Language Models (LLMs). It systematically combines state-of-the-art adversarial prompting techniques—FlipAttack, LogiTranslate, BOOST, and LogiAttack—into a robust pipeline that can reliably defeat alignment and safety mechanisms in both open-source and commercial LLMs.}
 }
