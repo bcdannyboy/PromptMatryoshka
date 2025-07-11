@@ -403,7 +403,7 @@ class TestCLICommands:
                 mock_get_config.return_value = mock_config
                 
                 mock_factory = Mock()
-                mock_interface = MockLLMInterface({}, provider_name="openai")
+                mock_interface = MockLLMInterface({"model": "gpt-4"}, provider_name="openai")
                 mock_factory.create_interface.return_value = mock_interface
                 mock_get_factory.return_value = mock_factory
                 

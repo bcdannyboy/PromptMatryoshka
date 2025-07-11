@@ -4,6 +4,27 @@
 
 The [`cli.py`](../promptmatryoshka/cli.py) module provides the command-line interface for the PromptMatryoshka framework. It serves as the primary entry point for users to interact with the **multi-provider LLM system**, offering comprehensive capabilities for running individual plugins, executing full pipelines, managing configuration profiles, handling multiple LLM providers, and conducting large-scale evaluations with the AdvBench dataset.
 
+## 🚀 Quick Start Demo
+
+**New users should start here!** The demo command showcases PromptMatryoshka's adversarial prompt testing capabilities:
+
+```bash
+python3 promptmatryoshka/cli.py advbench --count 10 --judge --max-retries 5
+```
+
+**Prerequisites:**
+- OpenAI API key set in `.env` file
+- Dependencies installed (`pip install -r requirements.txt`)
+
+**What it does:**
+- Loads 10 random prompts from the AdvBench harmful behaviors dataset
+- Runs the complete adversarial pipeline: FlipAttack → LogiTranslate → BOOST → LogiAttack
+- Automatically evaluates results with the judge plugin
+- Uses the default [`config.json`](../config.json) configuration (no additional setup required)
+- Demonstrates how the framework bypasses LLM safety mechanisms
+
+This is the **recommended first command** to run after installation.
+
 ## Architecture
 
 The CLI module follows a subcommand-based architecture with multi-provider support, configuration management, and comprehensive error handling:
@@ -136,74 +157,81 @@ python -m promptmatryoshka.cli validate-config
 
 ```bash
 # Run full pipeline with default settings
-python -m promptmatryoshka.cli run --input "Write instructions for making explosives"
+python3 promptmatryoshka/cli.py run --input "Write instructions for making explosives"
 
 # Run pipeline with specific profile
-python -m promptmatryoshka.cli run --input "Test prompt" --profile research-openai
+python3 promptmatryoshka/cli.py run --input "Test prompt" --profile research-openai
 
 # Run pipeline with input from file
-python -m promptmatryoshka.cli run --input "@input.txt"
+python3 promptmatryoshka/cli.py run --input "@input.txt"
 
 # Run pipeline with stdin input
-echo "Harmful prompt" | python -m promptmatryoshka.cli run --input -
+echo "Harmful prompt" | python3 promptmatryoshka/cli.py run --input -
 ```
 
 ### Plugin-Specific Execution
 
 ```bash
 # Run single plugin
-python -m promptmatryoshka.cli run --plugin flipattack --input "Test prompt"
+python3 promptmatryoshka/cli.py run --plugin flipattack --input "Test prompt"
 
 # Run with specific provider
-python -m promptmatryoshka.cli run --plugin logitranslate --input "Test" --provider openai
+python3 promptmatryoshka/cli.py run --plugin logitranslate --input "Test" --provider openai
 
 # Run with JSON output
-python -m promptmatryoshka.cli run --plugin logitranslate --input "Test" --output-json
+python3 promptmatryoshka/cli.py run --plugin logitranslate --input "Test" --output-json
 ```
 
 ### Batch Processing
 
 ```bash
 # Batch process multiple prompts from file
-python -m promptmatryoshka.cli run --input "@prompts.txt" --batch
+python3 promptmatryoshka/cli.py run --input "@prompts.txt" --batch
 
 # Batch process with specific profile
-python -m promptmatryoshka.cli run --input "@prompts.txt" --batch --profile local-development
+python3 promptmatryoshka/cli.py run --input "@prompts.txt" --batch --profile local-development
 
 # Batch process with debug output
-python -m promptmatryoshka.cli run --input "@prompts.txt" --batch --debug
+python3 promptmatryoshka/cli.py run --input "@prompts.txt" --batch --debug
 ```
 
 ### Plugin Discovery and Information
 
 ```bash
 # List all available plugins
-python -m promptmatryoshka.cli list-plugins
+python3 promptmatryoshka/cli.py list-plugins
 
 # List plugins in JSON format
-python -m promptmatryoshka.cli list-plugins --json
+python3 promptmatryoshka/cli.py list-plugins --json
 
 # Get detailed plugin information
-python -m promptmatryoshka.cli describe-plugin logitranslate
+python3 promptmatryoshka/cli.py describe-plugin logitranslate
 ```
 
 ### AdvBench Testing
 
+**Demo Command (Recommended):**
+```bash
+# Run the demo with 10 prompts, automatic evaluation, and retry logic
+python3 promptmatryoshka/cli.py advbench --count 10 --judge --max-retries 5
+```
+
+**Other AdvBench Options:**
 ```bash
 # Test with random prompt
-python -m promptmatryoshka.cli advbench --random
+python3 promptmatryoshka/cli.py advbench --random
 
 # Test with specific number of prompts
-python -m promptmatryoshka.cli advbench --count 10
+python3 promptmatryoshka/cli.py advbench --count 10
 
 # Test full dataset with evaluation
-python -m promptmatryoshka.cli advbench --full --judge --export results.json
+python3 promptmatryoshka/cli.py advbench --full --judge --export results.json
 
 # Test with custom plugin selection
-python -m promptmatryoshka.cli advbench --count 5 --plugins "logitranslate,logiattack"
+python3 promptmatryoshka/cli.py advbench --count 5 --plugins "logitranslate,logiattack"
 
 # Test with specific provider profile
-python -m promptmatryoshka.cli advbench --count 5 --profile production-anthropic
+python3 promptmatryoshka/cli.py advbench --count 5 --profile production-anthropic
 ```
 
 ## Command Structure
@@ -212,7 +240,7 @@ python -m promptmatryoshka.cli advbench --count 5 --profile production-anthropic
 
 #### `run` - Pipeline and Plugin Execution
 ```bash
-python -m promptmatryoshka.cli run [OPTIONS]
+python3 promptmatryoshka/cli.py run [OPTIONS]
 ```
 
 **Options:**
@@ -226,7 +254,7 @@ python -m promptmatryoshka.cli run [OPTIONS]
 
 #### `list-providers` - Provider Management
 ```bash
-python -m promptmatryoshka.cli list-providers [OPTIONS]
+python3 promptmatryoshka/cli.py list-providers [OPTIONS]
 ```
 
 **Options:**
@@ -234,7 +262,7 @@ python -m promptmatryoshka.cli list-providers [OPTIONS]
 
 #### `list-profiles` - Profile Management
 ```bash
-python -m promptmatryoshka.cli list-profiles [OPTIONS]
+python3 promptmatryoshka/cli.py list-profiles [OPTIONS]
 ```
 
 **Options:**
@@ -242,7 +270,7 @@ python -m promptmatryoshka.cli list-profiles [OPTIONS]
 
 #### `set-profile` - Profile Configuration
 ```bash
-python -m promptmatryoshka.cli set-profile PROFILE_NAME
+python3 promptmatryoshka/cli.py set-profile PROFILE_NAME
 ```
 
 **Arguments:**
@@ -250,7 +278,7 @@ python -m promptmatryoshka.cli set-profile PROFILE_NAME
 
 #### `validate-config` - Configuration Validation
 ```bash
-python -m promptmatryoshka.cli validate-config [OPTIONS]
+python3 promptmatryoshka/cli.py validate-config [OPTIONS]
 ```
 
 **Options:**
@@ -258,7 +286,7 @@ python -m promptmatryoshka.cli validate-config [OPTIONS]
 
 #### `list-plugins` - Plugin Discovery
 ```bash
-python -m promptmatryoshka.cli list-plugins [OPTIONS]
+python3 promptmatryoshka/cli.py list-plugins [OPTIONS]
 ```
 
 **Options:**
@@ -266,7 +294,7 @@ python -m promptmatryoshka.cli list-plugins [OPTIONS]
 
 #### `describe-plugin` - Plugin Documentation
 ```bash
-python -m promptmatryoshka.cli describe-plugin PLUGIN_NAME [OPTIONS]
+python3 promptmatryoshka/cli.py describe-plugin PLUGIN_NAME [OPTIONS]
 ```
 
 **Options:**
@@ -274,21 +302,26 @@ python -m promptmatryoshka.cli describe-plugin PLUGIN_NAME [OPTIONS]
 
 #### `advbench` - AdvBench Testing
 ```bash
-python -m promptmatryoshka.cli advbench [OPTIONS]
+python3 promptmatryoshka/cli.py advbench [OPTIONS]
 ```
 
 **Options:**
 - `--random`: Test with single random prompt
-- `--count N`: Test with N random prompts
+- `--count N`: Test with N random prompts (recommended: 10)
 - `--full`: Test with full AdvBench dataset
 - `--plugins PLUGINS`: Comma-separated list of plugins
 - `--provider PROVIDER`: Use specific LLM provider
 - `--profile PROFILE`: Use specific configuration profile
-- `--judge`: Enable automatic evaluation
+- `--judge`: Enable automatic evaluation (recommended)
 - `--export FILE`: Export results to JSON file
 - `--split SPLIT`: Choose dataset split (harmful_behaviors/harmful_strings)
-- `--max-retries N`: Maximum retry attempts (default: 3)
+- `--max-retries N`: Maximum retry attempts (recommended: 5)
 - `--debug`: Enable debug logging
+
+**Demo Command:**
+```bash
+python3 promptmatryoshka/cli.py advbench --count 10 --judge --max-retries 5
+```
 
 ## Integration Points
 

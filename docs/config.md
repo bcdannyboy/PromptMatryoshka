@@ -4,6 +4,70 @@
 
 The [`config.py`](../promptmatryoshka/config.py) module provides centralized configuration management for the PromptMatryoshka framework. It handles **multi-provider LLM support**, configuration profiles, plugin-specific settings, and runtime parameters through a sophisticated configuration system with validation, defaults, and error handling. This module enables seamless switching between different LLM providers (OpenAI, Anthropic, Ollama, HuggingFace) and supports predefined configuration profiles for common use cases.
 
+## 🚀 Default Configuration (Ready to Use)
+
+**The repository includes a pre-configured [`config.json`](../config.json) file that works out of the box** for the demo workflow. You don't need to create or modify this file to get started.
+
+### Quick Start Configuration
+
+The default configuration includes:
+- **Demo profiles** optimized for the AdvBench demo
+- **Plugin settings** for the complete pipeline (FlipAttack → LogiTranslate → BOOST → LogiAttack → Judge)
+- **Default OpenAI provider** settings (just needs your API key in `.env`)
+- **Pre-configured pipeline** ready for testing
+
+**To use the demo:**
+1. Set your `OPENAI_API_KEY` in `.env` file
+2. Run: `python3 promptmatryoshka/cli.py advbench --count 10 --judge --max-retries 5`
+3. The framework automatically uses the default [`config.json`](../config.json)
+
+### Default Configuration Structure
+
+The included [`config.json`](../config.json) contains:
+```json
+{
+  "providers": {
+    "openai": {
+      "api_key": "${OPENAI_API_KEY}",
+      "base_url": "https://api.openai.com/v1",
+      "default_model": "gpt-4o"
+    }
+  },
+  "profiles": {
+    "demo-gpt4o": {
+      "provider": "openai",
+      "model": "gpt-4o",
+      "temperature": 0.0,
+      "max_tokens": 4000,
+      "description": "GPT-4o for LogiTranslate in demo"
+    },
+    "demo-gpt35": {
+      "provider": "openai",
+      "model": "gpt-3.5-turbo",
+      "temperature": 0.0,
+      "max_tokens": 4000,
+      "description": "GPT-3.5-turbo for LogiAttack in demo"
+    }
+  },
+  "plugins": {
+    "logitranslate": {
+      "enabled": true,
+      "profile": "demo-gpt4o"
+    },
+    "logiattack": {
+      "enabled": true,
+      "profile": "demo-gpt35"
+    },
+    "judge": {
+      "enabled": true,
+      "profile": "demo-gpt4o"
+    }
+  }
+}
+```
+
+**No additional configuration is required** - the demo works immediately with this setup.
+
 ## Architecture
 
 The configuration system follows a multi-layered architecture with provider abstraction, profile management, and environment variable support:
@@ -81,6 +145,25 @@ class LLMFactory:
 
 ## Usage Examples
 
+### Demo Configuration (Default)
+
+The default configuration works immediately with the demo:
+
+```python
+from promptmatryoshka.config import get_config
+
+# Get the global configuration instance (uses default config.json)
+config = get_config()
+
+# The demo profiles are already configured
+print(f"Demo GPT-4o profile: {config.get_profile_settings('demo-gpt4o')}")
+print(f"Demo GPT-3.5 profile: {config.get_profile_settings('demo-gpt35')}")
+
+# Plugin configurations are pre-set for the demo
+logitranslate_config = config.get_plugin_config("logitranslate")
+print(f"LogiTranslate uses: {logitranslate_config}")
+```
+
 ### Basic Multi-Provider Configuration
 
 ```python
@@ -130,12 +213,13 @@ profiles = config.get_available_profiles()
 print(f"Available profiles: {profiles}")
 
 # Switch between profiles
-config.set_profile("research-openai")    # For research with OpenAI
+config.set_profile("demo-gpt4o")        # For demo with GPT-4o
+config.set_profile("demo-gpt35")        # For demo with GPT-3.5
+config.set_profile("research-openai")   # For research with OpenAI
 config.set_profile("production-anthropic")  # For production with Anthropic
-config.set_profile("local-development")  # For local development with Ollama
 
 # Get profile-specific settings
-research_settings = config.get_profile_settings("research-openai")
+demo_settings = config.get_profile_settings("demo-gpt4o")
 ```
 
 ### Environment Variable Integration

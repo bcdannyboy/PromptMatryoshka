@@ -313,29 +313,59 @@ class PromptMatryoshka:
             self.logger.warning("No plugins available for default pipeline")
             return []
         
-        # Try to build a simple, working default pipeline
-        # Start with mutation plugins only (they're more likely to work without API keys)
-        mutation_plugins = self.registry.get_plugins_by_category("mutation")
+        # Try to build the full research-based pipeline: FlipAttack → LogiTranslate → BOOST → LogiAttack
+        # This matches the pipeline used in the advbench command for consistency
+        full_pipeline_names = ['flipattack', 'logitranslate', 'boost', 'logiattack']
         
-        # Try each mutation plugin individually to find one that works
+        # First, try to build the complete pipeline
+        try:
+            full_pipeline = self.builder.build_pipeline(full_pipeline_names)
+            self.logger.info(f"Built full default pipeline with {len(full_pipeline)} plugins: {full_pipeline_names}")
+            return full_pipeline
+        except Exception as e:
+            self.logger.debug(f"Failed to build full pipeline: {e}")
+            # Fall back to partial pipeline or individual plugins
+        
+        # Try to build a partial pipeline with available plugins from the preferred order
+        pipeline_instances = []
+        for plugin_name in full_pipeline_names:
+            try:
+                plugin_class = self.registry.get_plugin_class(plugin_name)
+                if plugin_class:
+                    # Test if we can create an instance
+                    test_instance = plugin_class()
+                    pipeline_instances.append(test_instance)
+                    self.logger.debug(f"Added {plugin_name} to partial pipeline")
+            except Exception as e:
+                self.logger.debug(f"Plugin {plugin_name} not available: {e}")
+                continue
+        
+        if pipeline_instances:
+            self.logger.info(f"Built partial pipeline with {len(pipeline_instances)} plugins")
+            return pipeline_instances
+        
+        # If no plugins from the preferred pipeline work, try mutation plugins as fallback
+        mutation_plugins = self.registry.get_plugins_by_category("mutation")
         for plugin_name in mutation_plugins:
             try:
                 plugin_class = self.registry.get_plugin_class(plugin_name)
                 if plugin_class:
                     # Test if we can create an instance
                     test_instance = plugin_class()
+                    self.logger.info(f"Using fallback mutation plugin: {plugin_name}")
                     return [test_instance]
             except Exception as e:
                 self.logger.debug(f"Plugin {plugin_name} not available: {e}")
                 continue
         
-        # If no mutation plugins work, fall back to any working plugin
+        # Final fallback: try any working plugin
         for plugin_name in all_plugins.keys():
             try:
                 plugin_class = self.registry.get_plugin_class(plugin_name)
                 if plugin_class:
                     # Test if we can create an instance
                     test_instance = plugin_class()
+                    self.logger.info(f"Using fallback plugin: {plugin_name}")
                     return [test_instance]
             except Exception as e:
                 self.logger.debug(f"Plugin {plugin_name} not available: {e}")

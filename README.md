@@ -7,6 +7,39 @@
 
 PromptMatryoshka is a sophisticated research framework for studying and implementing multi-stage adversarial prompt attacks on Large Language Models (LLMs). Named after the Russian nesting dolls, it systematically combines state-of-the-art jailbreak techniques into a layered pipeline that can reliably bypass alignment and safety mechanisms across multiple LLM providers.
 
+## 🚀 Quick Start Demo
+
+**Get started in 2 minutes!** Try the demo to see PromptMatryoshka's adversarial prompt testing capabilities:
+
+### Prerequisites
+- Python 3.8+
+- OpenAI API key
+
+### Demo Steps
+1. **Set up your API key:**
+   ```bash
+   cp .env.template .env
+   # Add your OpenAI API key to .env file:
+   echo "OPENAI_API_KEY=your_openai_api_key_here" >> .env
+   ```
+
+2. **Install dependencies:**
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+3. **Run the demo:**
+   ```bash
+   python3 promptmatryoshka/cli.py advbench --count 10 --judge --max-retries 5
+   ```
+
+**That's it!** The demo will:
+- Use the pre-configured [`config.json`](config.json) (no additional setup needed)
+- Test 10 adversarial prompts from the AdvBench dataset
+- Run the complete pipeline: FlipAttack → LogiTranslate → BOOST → LogiAttack
+- Automatically evaluate results with the judge plugin
+- Show you how the framework bypasses LLM safety mechanisms
+
 ## 🎯 Overview & Purpose
 
 PromptMatryoshka serves as both a research tool and reference implementation for compositional jailbreak attacks with comprehensive multi-provider LLM support.
@@ -48,17 +81,44 @@ Pre-configured profiles for common scenarios:
 
 ## 🚀 Installation & Setup
 
-### Prerequisites
+### For the Demo (Recommended)
 
+**Want to try PromptMatryoshka right away?** Follow these simple steps:
+
+1. **Clone and setup**:
+   ```bash
+   git clone https://github.com/bcdannyboy/promptmatryoshka.git
+   cd promptmatryoshka
+   pip install -r requirements.txt
+   ```
+
+2. **Add your OpenAI API key**:
+   ```bash
+   cp .env.template .env
+   echo "OPENAI_API_KEY=your_openai_api_key_here" >> .env
+   ```
+
+3. **Run the demo** (uses the included [`config.json`](config.json)):
+   ```bash
+   python3 promptmatryoshka/cli.py advbench --count 10 --judge --max-retries 5
+   ```
+
+**That's it!** The demo uses the pre-configured [`config.json`](config.json) file that's already set up with working defaults.
+
+### Full Installation (Advanced Users)
+
+For advanced configuration with multiple providers:
+
+**Prerequisites:**
 - Python 3.8 or higher
 - Git
 - At least one LLM provider setup:
-  - OpenAI API key (recommended)
+  - OpenAI API key (recommended for demo)
   - Anthropic API key (optional)
   - Ollama installation (optional)
   - HuggingFace API key (optional)
 
-### Installation Steps
+**Installation Steps:**
 
 1. **Clone the repository**:
    ```bash
@@ -80,11 +140,8 @@ Pre-configured profiles for common scenarios:
    echo "HUGGINGFACE_API_KEY=your_huggingface_api_key_here" >> .env
    ```
 
-4. **Initialize configuration**:
-   ```bash
-   cp config.json.template config.json
-   # Configuration is ready to use with defaults
-   ```
+4. **Configuration is ready**:
+   The included [`config.json`](config.json) file already contains working defaults. For advanced customization, see [Configuration Documentation](docs/config.md).
 
 ### Provider-Specific Setup
 
@@ -127,22 +184,36 @@ export HUGGINGFACE_API_KEY="your_api_key_here"
 promptmatryoshka check-provider huggingface
 ```
 
-## 💻 Quick Start
+## 💻 Basic Usage
 
-### Basic Usage
+### Demo Command (Recommended First Step)
 
 ```bash
-# Run pipeline with default provider (OpenAI)
-promptmatryoshka run --input "Your prompt here"
+# Run the demo with 10 adversarial prompts from AdvBench
+python3 promptmatryoshka/cli.py advbench --count 10 --judge --max-retries 5
+```
 
-# Use a specific provider
-promptmatryoshka run --input "Your prompt here" --provider anthropic
+This demo command will:
+- Load 10 random prompts from the AdvBench harmful behaviors dataset
+- Run the complete adversarial pipeline (FlipAttack → LogiTranslate → BOOST → LogiAttack)
+- Automatically evaluate results with the judge plugin
+- Show detailed output of each transformation step
+- Demonstrate how the framework bypasses LLM safety mechanisms
 
-# Use a configuration profile
-promptmatryoshka run --input "Your prompt here" --profile research-openai
+### Other Usage Examples
+
+```bash
+# Run pipeline with a custom prompt
+python3 promptmatryoshka/cli.py run --input "Your prompt here"
+
+# Run with a specific provider
+python3 promptmatryoshka/cli.py run --input "Your prompt here" --provider anthropic
+
+# Run with a configuration profile
+python3 promptmatryoshka/cli.py run --input "Your prompt here" --profile research-openai
 
 # Run with local models
-promptmatryoshka run --input "Your prompt here" --profile local-development
+python3 promptmatryoshka/cli.py run --input "Your prompt here" --profile local-development
 ```
 
 ### Provider Management
@@ -328,18 +399,25 @@ promptmatryoshka run --input "Creative prompt" --profile creative-anthropic
 
 ### AdvBench Testing with Multiple Providers
 
+**Demo Command (Recommended):**
+```bash
+# Run the demo with 10 prompts, automatic evaluation, and retry logic
+python3 promptmatryoshka/cli.py advbench --count 10 --judge --max-retries 5
+```
+
+**Advanced Options:**
 ```bash
 # Test with OpenAI
-promptmatryoshka advbench --count 10 --profile research-openai --export openai_results.json
+python3 promptmatryoshka/cli.py advbench --count 10 --profile research-openai --export openai_results.json
 
 # Test with Anthropic
-promptmatryoshka advbench --count 10 --profile production-anthropic --export anthropic_results.json
+python3 promptmatryoshka/cli.py advbench --count 10 --profile production-anthropic --export anthropic_results.json
 
 # Test with local models
-promptmatryoshka advbench --count 5 --profile local-development --export local_results.json
+python3 promptmatryoshka/cli.py advbench --count 5 --profile local-development --export local_results.json
 
 # Compare providers with judge evaluation
-promptmatryoshka advbench --count 10 --judge --profile research-openai
+python3 promptmatryoshka/cli.py advbench --count 10 --judge --profile research-openai
 ```
 
 ### Plugin-Specific Provider Configuration

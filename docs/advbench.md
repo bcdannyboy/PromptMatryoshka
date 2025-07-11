@@ -4,6 +4,27 @@
 
 The [`advbench.py`](../promptmatryoshka/advbench.py) module provides comprehensive integration with the AdvBench dataset for adversarial prompt testing within the PromptMatryoshka framework. It handles dataset loading, local caching, random sampling, and manages different dataset splits, enabling researchers to conduct standardized evaluations of jailbreak techniques using the well-established AdvBench benchmark.
 
+## 🚀 Demo Usage (Recommended)
+
+**The easiest way to use AdvBench is through the demo command:**
+
+```bash
+python3 promptmatryoshka/cli.py advbench --count 10 --judge --max-retries 5
+```
+
+**What this does:**
+- Loads 10 random prompts from the AdvBench harmful behaviors dataset
+- Runs the complete adversarial pipeline on each prompt
+- Automatically evaluates results with the judge plugin
+- Uses the default [`config.json`](../config.json) configuration
+- Demonstrates the framework's adversarial capabilities
+
+**Prerequisites:**
+- OpenAI API key set in `.env` file
+- Dependencies installed: `pip install -r requirements.txt`
+
+**No additional setup required** - the demo uses the pre-configured settings.
+
 ## Architecture
 
 The AdvBench integration follows a loader-based architecture with caching and dataset management:

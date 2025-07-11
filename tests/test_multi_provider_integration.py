@@ -209,6 +209,10 @@ class TestMultiProviderIntegration:
         self.config = Config(self.config_path)
         self.factory = LLMFactory()
         
+        # Register test profiles with factory
+        for profile_name, profile_config in self.test_config["profiles"].items():
+            self.factory.register_profile(profile_name, profile_config)
+        
     def teardown_method(self):
         """Clean up after each test."""
         # Stop all patches
