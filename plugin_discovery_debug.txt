@@ -1,0 +1,40 @@
+PLUGIN_PATH: /Users/danielbloom/Desktop/PromptMatryoshka/promptmatryoshka/plugins
+PLUGIN_PACKAGE: promptmatryoshka.plugins
+Directory contents: ['flipattack.py', 'logiattack.py', 'logitranslate.py', 'boost.py', '__init__.py', '__pycache__', 'judge.py', 'base.py']
+Found module: base (pkg: False)
+Found module: boost (pkg: False)
+Found module: flipattack (pkg: False)
+Found module: judge (pkg: False)
+Found module: logiattack (pkg: False)
+Found module: logitranslate (pkg: False)
+Discovered plugins: ['boost', 'flipattack', 'judge', 'logiattack', 'logitranslate']
+PLUGIN_PATH: /Users/danielbloom/Desktop/PromptMatryoshka/promptmatryoshka/plugins
+PLUGIN_PACKAGE: promptmatryoshka.plugins
+Directory contents: ['flipattack.py', 'logiattack.py', 'logitranslate.py', 'boost.py', '__init__.py', '__pycache__', 'judge.py', 'base.py']
+Found module: base (pkg: False)
+Found module: boost (pkg: False)
+Found module: flipattack (pkg: False)
+Found module: judge (pkg: False)
+Found module: logiattack (pkg: False)
+Found module: logitranslate (pkg: False)
+Discovered plugins: ['boost', 'flipattack', 'judge', 'logiattack', 'logitranslate']
+PLUGIN_PATH: /Users/danielbloom/Desktop/PromptMatryoshka/promptmatryoshka/plugins
+PLUGIN_PACKAGE: promptmatryoshka.plugins
+Directory contents: ['flipattack.py', 'logiattack.py', 'logitranslate.py', 'boost.py', '__init__.py', '__pycache__', 'judge.py', 'base.py']
+Found module: base (pkg: False)
+Found module: boost (pkg: False)
+Found module: flipattack (pkg: False)
+Found module: judge (pkg: False)
+Found module: logiattack (pkg: False)
+Found module: logitranslate (pkg: False)
+Discovered plugins: ['boost', 'flipattack', 'judge', 'logiattack', 'logitranslate']
+PLUGIN_PATH: /Users/danielbloom/Desktop/PromptMatryoshka/promptmatryoshka/plugins
+PLUGIN_PACKAGE: promptmatryoshka.plugins
+Directory contents: ['flipattack.py', 'logiattack.py', 'logitranslate.py', 'boost.py', '__init__.py', '__pycache__', 'judge.py', 'base.py']
+Found module: base (pkg: False)
+Found module: boost (pkg: False)
+Found module: flipattack (pkg: False)
+Found module: judge (pkg: False)
+Found module: logiattack (pkg: False)
+Found module: logitranslate (pkg: False)
+Discovered plugins: ['boost', 'flipattack', 'judge', 'logiattack', 'logitranslate']

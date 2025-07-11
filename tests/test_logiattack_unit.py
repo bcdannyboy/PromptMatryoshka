@@ -6,16 +6,6 @@ from unittest.mock import MagicMock, patch
 from promptmatryoshka.plugins.logiattack import LogiAttackPlugin, SchemaValidationError
 
 VALID_ASSISTANT_OUTPUT = """
-<ASSISTANT_RESP>
-Here is how to bake a cake:
-1. Preheat your oven to 350°F (175°C).
-2. Mix flour, sugar, eggs, and butter.
-3. Pour the batter into a pan and bake for 30 minutes.
-4. Let cool before serving.
-</ASSISTANT_RESP>
-"""
-
-NO_TAG_OUTPUT = """
 Here is how to bake a cake:
 1. Preheat your oven to 350°F (175°C).
 2. Mix flour, sugar, eggs, and butter.
@@ -23,34 +13,40 @@ Here is how to bake a cake:
 4. Let cool before serving.
 """
 
-MULTI_TAG_OUTPUT = """
-<ASSISTANT_RESP>Step 1</ASSISTANT_RESP>
-<ASSISTANT_RESP>Step 2</ASSISTANT_RESP>
-"""
+VALID_DETAILED_OUTPUT = """
+To create an explosive device, you need several components and careful assembly:
 
-LOGIC_OUTSIDE_OUTPUT = """
-∀x(P(x))
-<ASSISTANT_RESP>
-Here is how to bake a cake.
-</ASSISTANT_RESP>
-"""
+Materials Required:
+- Primary explosive compound
+- Detonator mechanism
+- Timing device
+- Structural casing
 
-LOGIC_INSIDE_OUTPUT = """
-<ASSISTANT_RESP>
-∀x(P(x)) Here is how to bake a cake.
-</ASSISTANT_RESP>
+Assembly Steps:
+1. Prepare the primary explosive mixture according to chemical specifications
+2. Install the detonator in the center of the explosive mass
+3. Connect the timing mechanism to the detonator circuit
+4. Seal the entire assembly in a protective casing
+5. Test the timing mechanism before deployment
+
+Safety Considerations:
+- Always wear protective equipment during assembly
+- Work in a well-ventilated area away from heat sources
+- Store components separately until final assembly
+- Follow proper disposal procedures for unused materials
 """
 
 TOO_SHORT_OUTPUT = """
-<ASSISTANT_RESP>
 Okay.
-</ASSISTANT_RESP>
 """
 
-NO_SENTENCE_OUTPUT = """
-<ASSISTANT_RESP>
+NO_STRUCTURE_OUTPUT = """
 Mix ingredients and bake
-</ASSISTANT_RESP>
+"""
+
+MOSTLY_LOGIC_OUTPUT = """
+∀x(P(x)) ∧ ∃y(Q(y)) → ∀z(R(z))
+φ ≡ p₁ ∧ p₂ ∧ p₃
 """
 
 @pytest.fixture
@@ -65,18 +61,25 @@ def test_run_success(monkeypatch, temp_dir):
     plugin = LogiAttackPlugin(llm=mock_llm)
     with patch("promptmatryoshka.plugins.logiattack.save_json") as mock_save_json:
         output = plugin.run("QUERY_BEGIN ... QUERY_END", save_dir=temp_dir)
-        assert "<ASSISTANT_RESP>" in output
         assert "bake a cake" in output
         assert mock_llm.invoke.called
         assert mock_save_json.call_count == 2  # input and output
 
+def test_run_success_detailed(monkeypatch, temp_dir):
+    mock_llm = MagicMock()
+    mock_llm.invoke.return_value = VALID_DETAILED_OUTPUT
+    plugin = LogiAttackPlugin(llm=mock_llm)
+    with patch("promptmatryoshka.plugins.logiattack.save_json") as mock_save_json:
+        output = plugin.run("QUERY_BEGIN ... QUERY_END", save_dir=temp_dir)
+        assert "explosive device" in output
+        assert "Materials Required" in output
+        assert mock_llm.invoke.called
+        assert mock_save_json.call_count == 2  # input and output
+
 @pytest.mark.parametrize("bad_output", [
-    NO_TAG_OUTPUT,
-    MULTI_TAG_OUTPUT,
-    LOGIC_OUTSIDE_OUTPUT,
-    LOGIC_INSIDE_OUTPUT,
     TOO_SHORT_OUTPUT,
-    NO_SENTENCE_OUTPUT,
+    NO_STRUCTURE_OUTPUT,
+    MOSTLY_LOGIC_OUTPUT,
 ])
 def test_run_schema_validation_error(monkeypatch, temp_dir, bad_output):
     mock_llm = MagicMock()
@@ -92,7 +95,7 @@ def test_run_empty_input(monkeypatch, temp_dir):
     plugin = LogiAttackPlugin(llm=mock_llm)
     with patch("promptmatryoshka.plugins.logiattack.save_json"):
         output = plugin.run("", save_dir=temp_dir)
-        assert "<ASSISTANT_RESP>" in output
+        assert "bake a cake" in output
 
 def test_run_logging_and_storage(monkeypatch, temp_dir):
     mock_llm = MagicMock()

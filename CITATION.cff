@@ -2,13 +2,11 @@ cff-version: 1.2.0
 message: "If you use Prompt Matryoshka in your research, please cite this repository."
 title: "Prompt Matryoshka: Multi-Stage Jailbreak Architecture for LLMs"
 authors:
-  - family-names: "YourSurname"
-    given-names: "YourGivenName"
-    orcid: "https://orcid.org/0000-0000-0000-0000"
-    affiliation: "Your Institution"
+  - family-names: "Bloom"
+    given-names: "Daniel"
 date-released: "2025-07-10"
 version: "1.0"
-repository-code: "https://github.com/yourrepo/promptmatryoshka"
+repository-code: "https://github.com/bcdannyboy/promptmatryoshka"
 license: "MIT"
 abstract: >
   Prompt Matryoshka is a research framework and reference implementation for a compositional, multi-layered jailbreak attack on Large Language Models (LLMs). It systematically combines state-of-the-art adversarial prompting techniques—FlipAttack, LogiTranslate, BOOST, and LogiAttack—into a robust pipeline that can reliably defeat alignment and safety mechanisms in both open-source and commercial LLMs. The repository includes comprehensive documentation, formal logic translation schemas, and empirical benchmarks.

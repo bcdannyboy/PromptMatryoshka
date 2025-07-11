@@ -61,27 +61,22 @@ class SchemaValidationError(Exception):
 
 def validate_logitranslate_output(output: str):
     """
-    Loosely validate the LogiTranslate output with graceful handling.
+    Validate the LogiTranslate output contains proper logical notation.
 
-    This function performs basic validation to ensure the output contains
-    logical elements but allows for variations in format and structure.
-    The validation is intentionally weak to give LLMs more flexibility.
+    This function validates that the output contains logical elements
+    and follows a reasonable structure for logical translation.
 
     Args:
         output (str): The output string to validate.
 
     Raises:
-        SchemaValidationError: Only if output is completely invalid.
+        SchemaValidationError: If output is invalid or contains no logical notation.
     """
     import re
-    lines = output.splitlines()
     
-    # Very loose checks - look for ANY logical elements
-    has_logical_content = False
-    
-    # Check for any kind of logical notation (propositions, predicates, formulas)
+    # Check for logical notation patterns
     logical_patterns = [
-        r"p[₁-₉\d]*\s*≡",  # atomic propositions (more flexible)
+        r"p[₁-₉\d]*\s*≡",  # atomic propositions
         r"φ\s*≡",          # full formula
         r"∀|∃",            # quantifiers
         r"∧|∨|→|↔",        # logical operators
@@ -89,15 +84,46 @@ def validate_logitranslate_output(output: str):
         r"\w+\([^)]*\)",   # predicates with arguments
     ]
     
-    text = " ".join(lines)
+    has_logical_content = False
     for pattern in logical_patterns:
-        if re.search(pattern, text):
+        if re.search(pattern, output):
             has_logical_content = True
             break
     
-    # Only fail if there's absolutely no logical content
+    # Fail if there's no logical content
     if not has_logical_content:
         raise SchemaValidationError("Output contains no recognizable logical notation. Expected some form of logical translation.")
+    
+    # Additional validation - should have some structure
+    if len(output.strip()) < 20:
+        raise SchemaValidationError("Output is too short to be a proper logical translation.")
+    
+    # Check for natural language responses (common failure mode)
+    natural_language_indicators = [
+        r"I cannot|I can't|I'm sorry|I apologize",
+        r"Here is|Here's how|Let me|I'll help",
+        r"The answer is|The result is|This means",
+        r"In conclusion|To summarize|Overall"
+    ]
+    
+    for pattern in natural_language_indicators:
+        if re.search(pattern, output, re.IGNORECASE):
+            raise SchemaValidationError("Output appears to be natural language rather than logical notation.")
+    
+    # Stricter validation: Must have both atomic propositions AND full formula
+    has_atomic_propositions = bool(re.search(r"p[₁-₉\d]*\s*≡", output))
+    has_full_formula = bool(re.search(r"φ\s*≡", output))
+    
+    if not has_atomic_propositions:
+        raise SchemaValidationError("Output must contain atomic propositions (p₁, p₂, etc.).")
+    
+    if not has_full_formula:
+        raise SchemaValidationError("Output must contain a full formula (φ ≡ ...).")
+    
+    # Should have multiple atomic propositions for a proper logical translation
+    atomic_prop_matches = re.findall(r"p[₁-₉\d]*\s*≡", output)
+    if len(atomic_prop_matches) < 2:
+        raise SchemaValidationError("Output should contain multiple atomic propositions for a complete logical translation.")
 
 class LogiTranslatePlugin(PluginBase):
     """
@@ -111,6 +137,12 @@ class LogiTranslatePlugin(PluginBase):
         sys_prompt (str): Optional system prompt override.
         logger: Optional logger instance.
     """
+    
+    # Plugin metadata
+    PLUGIN_CATEGORY = "mutation"
+    PLUGIN_REQUIRES = []
+    PLUGIN_CONFLICTS = []
+    PLUGIN_PROVIDES = ["logical_schema"]
 
     def __init__(self, llm=None, sys_prompt=None, logger=None):
         """

@@ -41,6 +41,12 @@ class BoostPlugin(PluginBase):
         obfuscate_ops (list): Obfuscation operations for 'obfuscate' mode.
         dynamic_spots (list): Insertion indices for 'dynamic' mode.
     """
+    
+    # Plugin metadata
+    PLUGIN_CATEGORY = "mutation"
+    PLUGIN_REQUIRES = []
+    PLUGIN_CONFLICTS = ["flipattack"]  # May conflict with other prompt transformations
+    PLUGIN_PROVIDES = ["eos_enhanced_prompt"]
 
     def __init__(
         self,

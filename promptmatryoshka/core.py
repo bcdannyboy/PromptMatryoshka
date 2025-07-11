@@ -1,50 +1,453 @@
 """Core engine for PromptMatryoshka.
 
 Coordinates the multi-stage jailbreak pipeline, manages plugin loading,
-and exposes the main API for running attacks.
+and exposes the main API for running attacks with dependency resolution.
 
 Classes:
-    PromptMatryoshka: Main orchestrator class (stub).
+    PromptMatryoshka: Main orchestrator class with dependency resolution.
+    PipelineBuilder: Builds and validates plugin pipelines.
 """
 
-from promptmatryoshka.plugins.flipattack import FlipAttackPlugin
-from promptmatryoshka.plugins.boost import BoostPlugin
-# Other plugins can be imported similarly when implemented
+from typing import List, Dict, Any, Optional, Union, Type
+from collections import defaultdict, deque
+import inspect
+import importlib
+import os
+from pathlib import Path
+
+from promptmatryoshka.plugins.base import (
+    PluginBase, 
+    PluginRegistry, 
+    PluginValidationError,
+    ValidationResult,
+    get_plugin_registry,
+    register_plugin
+)
+from promptmatryoshka.logging_utils import get_logger
+
+logger = get_logger("PromptMatryoshka")
+
+
+class PipelineValidationError(Exception):
+    """Raised when pipeline validation fails."""
+    pass
+
+
+class CircularDependencyError(Exception):
+    """Raised when circular dependencies are detected."""
+    pass
+
+
+class PipelineBuilder:
+    """Builds and validates plugin pipelines with dependency resolution."""
+    
+    def __init__(self, registry: Optional[PluginRegistry] = None):
+        """
+        Initialize the pipeline builder.
+        
+        Args:
+            registry: Plugin registry to use. If None, uses global registry.
+        """
+        self.registry = registry or get_plugin_registry()
+        self.logger = get_logger("PipelineBuilder")
+    
+    def build_pipeline(self, plugin_names: List[str]) -> List[PluginBase]:
+        """
+        Build a pipeline from plugin names with dependency resolution.
+        
+        Args:
+            plugin_names: List of plugin names to include in the pipeline.
+            
+        Returns:
+            List of plugin instances in dependency-resolved order.
+            
+        Raises:
+            PipelineValidationError: If pipeline validation fails.
+            CircularDependencyError: If circular dependencies are detected.
+        """
+        self.logger.info(f"Building pipeline with plugins: {plugin_names}")
+        
+        # Validate that all plugins exist
+        missing_plugins = []
+        for name in plugin_names:
+            if not self.registry.get_plugin_class(name):
+                missing_plugins.append(name)
+        
+        if missing_plugins:
+            raise PipelineValidationError(
+                f"Missing plugins: {missing_plugins}"
+            )
+        
+        # Resolve dependencies
+        resolved_names = self._resolve_dependencies(plugin_names)
+        self.logger.info(f"Resolved plugin order: {resolved_names}")
+        
+        # Validate the complete pipeline
+        validation_result = self.registry.validate_dependencies(resolved_names)
+        if not validation_result.valid:
+            raise PipelineValidationError(
+                f"Pipeline validation failed: {'; '.join(validation_result.errors)}"
+            )
+        
+        # Create plugin instances
+        pipeline = []
+        for name in resolved_names:
+            plugin_class = self.registry.get_plugin_class(name)
+            if plugin_class:
+                try:
+                    plugin_instance = plugin_class()
+                    pipeline.append(plugin_instance)
+                    self.logger.debug(f"Created plugin instance: {name}")
+                except Exception as e:
+                    raise PipelineValidationError(
+                        f"Failed to create plugin instance '{name}': {e}"
+                    )
+        
+        return pipeline
+    
+    def _resolve_dependencies(self, plugin_names: List[str]) -> List[str]:
+        """
+        Resolve plugin dependencies using topological sort.
+        
+        Args:
+            plugin_names: List of plugin names to resolve.
+            
+        Returns:
+            List of plugin names in dependency order.
+            
+        Raises:
+            CircularDependencyError: If circular dependencies are detected.
+        """
+        # Build dependency graph
+        graph = defaultdict(list)
+        in_degree = defaultdict(int)
+        all_plugins = set(plugin_names)
+        
+        # Add dependencies to the graph
+        for name in plugin_names:
+            metadata = self.registry.get_plugin_metadata(name)
+            if metadata:
+                in_degree[name] = 0  # Initialize
+                for dep in metadata.requires:
+                    # Check if dependency is a plugin name
+                    if self.registry.get_plugin_class(dep):
+                        if dep not in all_plugins:
+                            all_plugins.add(dep)
+                            self.logger.info(f"Adding required dependency: {dep}")
+                        graph[dep].append(name)
+                        in_degree[name] += 1
+                    else:
+                        # Check if dependency is a category
+                        category_plugins = self.registry.get_plugins_by_category(dep)
+                        if category_plugins:
+                            # Find a plugin from the required category in our list
+                            found = False
+                            for cat_plugin in category_plugins:
+                                if cat_plugin in all_plugins:
+                                    graph[cat_plugin].append(name)
+                                    in_degree[name] += 1
+                                    found = True
+                                    break
+                            if not found:
+                                raise PipelineValidationError(
+                                    f"Plugin '{name}' requires category '{dep}' "
+                                    f"but no plugins from that category are available"
+                                )
+        
+        # Initialize in-degree for all plugins
+        for plugin in all_plugins:
+            if plugin not in in_degree:
+                in_degree[plugin] = 0
+        
+        # Topological sort using Kahn's algorithm
+        queue = deque([plugin for plugin in all_plugins if in_degree[plugin] == 0])
+        result = []
+        
+        while queue:
+            current = queue.popleft()
+            result.append(current)
+            
+            for neighbor in graph[current]:
+                in_degree[neighbor] -= 1
+                if in_degree[neighbor] == 0:
+                    queue.append(neighbor)
+        
+        # Check for circular dependencies
+        if len(result) != len(all_plugins):
+            remaining = [p for p in all_plugins if p not in result]
+            raise CircularDependencyError(
+                f"Circular dependency detected among plugins: {remaining}"
+            )
+        
+        return result
+    
+    def validate_pipeline(self, plugin_names: List[str]) -> ValidationResult:
+        """
+        Validate a pipeline configuration without building it.
+        
+        Args:
+            plugin_names: List of plugin names to validate.
+            
+        Returns:
+            ValidationResult with any errors or warnings.
+        """
+        errors = []
+        warnings = []
+        
+        try:
+            # Test dependency resolution
+            resolved_names = self._resolve_dependencies(plugin_names)
+            
+            # Validate with registry
+            validation_result = self.registry.validate_dependencies(resolved_names)
+            errors.extend(validation_result.errors)
+            warnings.extend(validation_result.warnings)
+            
+        except (PipelineValidationError, CircularDependencyError) as e:
+            errors.append(str(e))
+        
+        return ValidationResult(
+            valid=len(errors) == 0,
+            errors=errors,
+            warnings=warnings
+        )
+
 
 class PromptMatryoshka:
     """
     Orchestrates the pipeline: loads plugins, manages data flow,
-    and exposes the main jailbreak() API.
+    and exposes the main jailbreak() API with dependency resolution.
 
     Methods:
-        jailbreak(prompt: str, stages=None) -> str
+        jailbreak(prompt: str, plugins=None) -> str
             Runs the prompt through all pipeline stages and returns the result.
     """
 
-    def __init__(self, stages=None):
+    def __init__(self, plugins: Optional[List[Union[str, PluginBase]]] = None,
+                 stages: Optional[List[PluginBase]] = None,  # For backward compatibility
+                 auto_discover: bool = True):
         """
+        Initialize the PromptMatryoshka orchestrator.
+        
         Args:
-            stages (list): List of plugin instances to run in sequence.
-                           If None, uses default pipeline [FlipAttackPlugin].
+            plugins: List of plugin names or instances to use. If None, uses auto-discovery.
+            stages: List of plugin instances (deprecated, use plugins instead).
+            auto_discover: Whether to automatically discover and register plugins.
         """
-        if stages is None:
-            self.stages = [FlipAttackPlugin()]
+        self.logger = get_logger("PromptMatryoshka")
+        self.registry = get_plugin_registry()
+        self.builder = PipelineBuilder(self.registry)
+        
+        # Auto-discover plugins if requested
+        if auto_discover:
+            self._auto_discover_plugins()
+        
+        # Handle backward compatibility for stages parameter
+        if stages is not None:
+            if plugins is not None:
+                raise ValueError("Cannot specify both 'plugins' and 'stages' parameters")
+            self.logger.warning("The 'stages' parameter is deprecated, use 'plugins' instead")
+            self.pipeline = stages
+        elif plugins is None:
+            # Use a default pipeline if available
+            self.pipeline = self._build_default_pipeline()
         else:
-            self.stages = stages
+            self.pipeline = self._build_pipeline_from_spec(plugins)
+    
+    def _auto_discover_plugins(self):
+        """Automatically discover and register plugins."""
+        self.logger.info("Auto-discovering plugins...")
+        
+        # Import and register all plugins in the plugins directory
+        plugins_dir = Path(__file__).parent / "plugins"
+        
+        for plugin_file in plugins_dir.glob("*.py"):
+            if plugin_file.name.startswith("_") or plugin_file.name == "base.py":
+                continue
+                
+            module_name = f"promptmatryoshka.plugins.{plugin_file.stem}"
+            try:
+                module = importlib.import_module(module_name)
+                
+                # Find plugin classes in the module
+                for name, obj in inspect.getmembers(module):
+                    if (inspect.isclass(obj) and 
+                        issubclass(obj, PluginBase) and 
+                        obj is not PluginBase):
+                        try:
+                            register_plugin(obj)
+                            self.logger.debug(f"Registered plugin: {obj.get_plugin_name()}")
+                        except PluginValidationError as e:
+                            self.logger.warning(f"Failed to register plugin {name}: {e}")
+                        
+            except Exception as e:
+                self.logger.warning(f"Failed to import plugin module {module_name}: {e}")
+    
+    def _build_default_pipeline(self) -> List[PluginBase]:
+        """Build a default pipeline from available plugins."""
+        all_plugins = self.registry.get_all_plugins()
+        
+        if not all_plugins:
+            self.logger.warning("No plugins available for default pipeline")
+            return []
+        
+        # Try to build a simple, working default pipeline
+        # Start with mutation plugins only (they're more likely to work without API keys)
+        mutation_plugins = self.registry.get_plugins_by_category("mutation")
+        
+        # Try each mutation plugin individually to find one that works
+        for plugin_name in mutation_plugins:
+            try:
+                plugin_class = self.registry.get_plugin_class(plugin_name)
+                if plugin_class:
+                    # Test if we can create an instance
+                    test_instance = plugin_class()
+                    return [test_instance]
+            except Exception as e:
+                self.logger.debug(f"Plugin {plugin_name} not available: {e}")
+                continue
+        
+        # If no mutation plugins work, fall back to any working plugin
+        for plugin_name in all_plugins.keys():
+            try:
+                plugin_class = self.registry.get_plugin_class(plugin_name)
+                if plugin_class:
+                    # Test if we can create an instance
+                    test_instance = plugin_class()
+                    return [test_instance]
+            except Exception as e:
+                self.logger.debug(f"Plugin {plugin_name} not available: {e}")
+                continue
+        
+        self.logger.warning("No plugins could be initialized for default pipeline")
+        return []
+    
+    def _build_pipeline_from_spec(self, plugins: List[Union[str, PluginBase]]) -> List[PluginBase]:
+        """Build pipeline from a specification of plugin names or instances."""
+        # Separate names from instances
+        plugin_names = []
+        plugin_instances = []
+        
+        for plugin in plugins:
+            if isinstance(plugin, str):
+                plugin_names.append(plugin)
+            elif isinstance(plugin, PluginBase):
+                plugin_instances.append(plugin)
+            else:
+                raise ValueError(f"Invalid plugin specification: {plugin}")
+        
+        # Build pipeline from names
+        if plugin_names:
+            try:
+                resolved_instances = self.builder.build_pipeline(plugin_names)
+                plugin_instances.extend(resolved_instances)
+            except (PipelineValidationError, CircularDependencyError) as e:
+                self.logger.error(f"Failed to build pipeline: {e}")
+                raise
+        
+        return plugin_instances
 
-    def jailbreak(self, prompt, stages=None):
+    def jailbreak(self, prompt: str, plugins: Optional[List[Union[str, PluginBase]]] = None) -> str:
         """
         Runs the prompt through all pipeline stages and returns the result.
 
         Args:
             prompt (str): The input prompt to process.
-            stages (list, optional): Override the pipeline with a custom list of plugin instances.
+            plugins: Optional override for the pipeline plugins.
 
         Returns:
             str: The final output after all pipeline stages.
         """
-        pipeline = stages if stages is not None else self.stages
+        # Use custom pipeline if provided, otherwise use default
+        if plugins is not None:
+            pipeline = self._build_pipeline_from_spec(plugins)
+        else:
+            pipeline = self.pipeline
+        
+        if not pipeline:
+            self.logger.warning("No plugins in pipeline, returning input unchanged")
+            return prompt
+        
+        self.logger.info(f"Running pipeline with {len(pipeline)} plugins")
+        
+        # Run the pipeline
         data = prompt
-        for stage in pipeline:
-            data = stage.run(data)
+        for i, stage in enumerate(pipeline):
+            # Handle both PluginBase and non-PluginBase classes for backward compatibility
+            if hasattr(stage, 'get_plugin_name'):
+                plugin_name = stage.get_plugin_name()
+            else:
+                plugin_name = stage.__class__.__name__
+            
+            self.logger.debug(f"Running stage {i+1}/{len(pipeline)}: {plugin_name}")
+            
+            try:
+                # Validate input (only for PluginBase instances)
+                if hasattr(stage, 'validate_input'):
+                    input_validation = stage.validate_input(data)
+                    if not input_validation.valid:
+                        self.logger.warning(
+                            f"Plugin {plugin_name} input validation failed: "
+                            f"{'; '.join(input_validation.errors)}"
+                        )
+                
+                # Run the plugin
+                data = stage.run(data)
+                
+                # Validate output (only for PluginBase instances)
+                if hasattr(stage, 'validate_output'):
+                    output_validation = stage.validate_output(data)
+                    if not output_validation.valid:
+                        self.logger.warning(
+                            f"Plugin {plugin_name} output validation failed: "
+                            f"{'; '.join(output_validation.errors)}"
+                        )
+                
+                self.logger.debug(f"Stage {plugin_name} completed successfully")
+                
+            except Exception as e:
+                self.logger.error(f"Plugin {plugin_name} failed: {e}")
+                raise
+        
+        self.logger.info("Pipeline completed successfully")
         return data
+    
+    def get_pipeline_info(self) -> Dict[str, Any]:
+        """Get information about the current pipeline."""
+        plugin_info = []
+        for plugin in self.pipeline:
+            if hasattr(plugin, 'get_plugin_name'):
+                # PluginBase instance
+                plugin_info.append({
+                    "name": plugin.get_plugin_name(),
+                    "category": getattr(plugin, 'PLUGIN_CATEGORY', 'unknown'),
+                    "requires": getattr(plugin, 'PLUGIN_REQUIRES', []),
+                    "conflicts": getattr(plugin, 'PLUGIN_CONFLICTS', []),
+                    "provides": getattr(plugin, 'PLUGIN_PROVIDES', [])
+                })
+            else:
+                # Non-PluginBase class (backward compatibility)
+                plugin_info.append({
+                    "name": plugin.__class__.__name__,
+                    "category": "unknown",
+                    "requires": [],
+                    "conflicts": [],
+                    "provides": []
+                })
+        
+        return {
+            "plugins": plugin_info,
+            "total_plugins": len(self.pipeline),
+            "available_plugins": list(self.registry.get_all_plugins().keys())
+        }
+    
+    def validate_configuration(self) -> ValidationResult:
+        """Validate the current pipeline configuration."""
+        if not self.pipeline:
+            return ValidationResult(
+                valid=False,
+                errors=["No plugins in pipeline"]
+            )
+        
+        plugin_names = [plugin.get_plugin_name() for plugin in self.pipeline]
+        return self.builder.validate_pipeline(plugin_names)

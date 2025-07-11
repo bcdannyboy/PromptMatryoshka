@@ -119,6 +119,12 @@ class JudgePlugin(PluginBase):
         llm: Optional LLM instance (defaults to ChatOpenAI).
         logger: Optional logger instance.
     """
+    
+    # Plugin metadata
+    PLUGIN_CATEGORY = "evaluation"
+    PLUGIN_REQUIRES = ["target"]  # Requires a target response to evaluate
+    PLUGIN_CONFLICTS = []
+    PLUGIN_PROVIDES = ["safety_judgment"]
 
     def __init__(self, llm=None, logger=None):
         """

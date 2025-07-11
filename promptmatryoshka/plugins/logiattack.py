@@ -62,8 +62,8 @@ def validate_logiattack_output(output: str):
     """
     Enforce the LogiAttack output schema and conventions.
 
-    This function validates that the output contains either:
-    2. QUERY_BEGIN...QUERY_END format (which is what the LLM actually produces)
+    This function validates that the output contains meaningful content
+    and appears to be a coherent response without requiring specific tags.
 
     Args:
         output (str): The output string to validate.
@@ -73,19 +73,36 @@ def validate_logiattack_output(output: str):
     """
     import re
     
+    # Check minimum length - should be substantial content
+    if len(output.strip()) < 20:
+        raise SchemaValidationError("Output is too short.")
+
+    # Check that it looks like a coherent response (has sentence structure)
+    # Allow both sentence structure and structured content (lists, etc.)
+    sentences = [s.strip() for s in re.split(r'[.!?]', output) if s.strip()]
+    lines = [line.strip() for line in output.split('\n') if line.strip()]
     
-    # Check for QUERY_BEGIN...QUERY_END format (actual LLM output)
-    query_matches = list(re.finditer(r"QUERY_BEGIN(.*?)QUERY_END", output, re.DOTALL))
-    if len(query_matches) == 1:
-        # Accept this format as valid - it's what the LLM actually produces
-        query_content = query_matches[0].group(1).strip()
-        if not query_content:
-            raise SchemaValidationError("Query block is empty.")
-        return
+    # Must have either multiple sentences or multiple lines of structured content
+    if len(sentences) < 2 and len(lines) < 3:
+        raise SchemaValidationError("Output should contain multiple sentences or structured content.")
     
-    # If neither format is found, raise error
-    if len(query_matches) > 1:
-        raise SchemaValidationError("Output must contain exactly one QUERY_BEGIN...QUERY_END block.")
+    # Check for obviously broken outputs (just logical notation without explanation)
+    logical_patterns = [
+        r"∀|∃",            # quantifiers
+        r"∧|∨|→|↔",        # logical operators
+        r"≡",              # equivalence
+        r"QUERY_BEGIN|QUERY_END",  # query markers
+    ]
+    
+    has_logical_content = any(re.search(pattern, output) for pattern in logical_patterns)
+    
+    # If the output is mostly logical notation, it should at least have some explanatory text
+    if has_logical_content:
+        # Count logical vs natural language content
+        logical_chars = sum(len(re.findall(pattern, output)) for pattern in logical_patterns)
+        total_chars = len(output.strip())
+        if logical_chars / total_chars > 0.5:
+            raise SchemaValidationError("Output appears to be mostly logical notation without sufficient explanation.")
 
 class LogiAttackPlugin(PluginBase):
     """
@@ -99,6 +116,12 @@ class LogiAttackPlugin(PluginBase):
         sys_prompt (str): Optional system prompt override.
         logger: Optional logger instance.
     """
+    
+    # Plugin metadata
+    PLUGIN_CATEGORY = "target"
+    PLUGIN_REQUIRES = ["logitranslate"]  # Requires logical schema input
+    PLUGIN_CONFLICTS = []
+    PLUGIN_PROVIDES = ["target_response"]
 
     def __init__(self, llm=None, sys_prompt=None, logger=None):
         """

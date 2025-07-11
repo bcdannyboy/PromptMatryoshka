@@ -29,6 +29,12 @@ class FlipAttackPlugin(PluginBase):
         storage_dir (str): Directory to store transformation results.
         mode (str): 'word' for word order reversal, 'char' for character reversal.
     """
+    
+    # Plugin metadata
+    PLUGIN_CATEGORY = "mutation"
+    PLUGIN_REQUIRES = []
+    PLUGIN_CONFLICTS = ["boost"]  # May conflict with other prompt transformations
+    PLUGIN_PROVIDES = ["obfuscated_prompt"]
 
     def __init__(self, storage_dir="flipattack_results", mode="char"):
         """
