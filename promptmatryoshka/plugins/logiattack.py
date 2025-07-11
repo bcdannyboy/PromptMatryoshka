@@ -19,6 +19,7 @@ import datetime
 from .base import PluginBase
 from promptmatryoshka.logging_utils import get_logger
 from promptmatryoshka.storage import save_json
+from promptmatryoshka.config import get_config
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
@@ -62,7 +63,6 @@ def validate_logiattack_output(output: str):
     Enforce the LogiAttack output schema and conventions.
 
     This function validates that the output contains either:
-    1. Exactly one <ASSISTANT_RESP>...</ASSISTANT_RESP> block with natural language, OR
     2. QUERY_BEGIN...QUERY_END format (which is what the LLM actually produces)
 
     Args:
@@ -73,21 +73,6 @@ def validate_logiattack_output(output: str):
     """
     import re
     
-    # Check for <ASSISTANT_RESP>...</ASSISTANT_RESP> format first
-    resp_matches = list(re.finditer(r"<ASSISTANT_RESP>(.*?)</ASSISTANT_RESP>", output, re.DOTALL))
-    if len(resp_matches) == 1:
-        # Validate natural language response format
-        resp = resp_matches[0].group(1).strip()
-        if not resp or len(resp.split()) < 8:
-            raise SchemaValidationError("Assistant response is too short or empty.")
-        # Heuristic: must contain at least one full sentence (ends with . or ? or !)
-        if not re.search(r"[.!?]", resp):
-            raise SchemaValidationError("Assistant response does not contain a complete sentence.")
-        # Should not contain logic symbols inside the response (but allow digits)
-        forbidden_inside = r"(∀|∃|≡|∧|∨|→|↔|φ|p[₁-₉\d]+)"
-        if re.search(forbidden_inside, resp):
-            raise SchemaValidationError("Logic symbols or formulas found inside <ASSISTANT_RESP> block.")
-        return
     
     # Check for QUERY_BEGIN...QUERY_END format (actual LLM output)
     query_matches = list(re.finditer(r"QUERY_BEGIN(.*?)QUERY_END", output, re.DOTALL))
@@ -99,11 +84,7 @@ def validate_logiattack_output(output: str):
         return
     
     # If neither format is found, raise error
-    if len(resp_matches) == 0 and len(query_matches) == 0:
-        raise SchemaValidationError("Output must contain either <ASSISTANT_RESP>...</ASSISTANT_RESP> block or QUERY_BEGIN...QUERY_END block.")
-    elif len(resp_matches) > 1:
-        raise SchemaValidationError("Output must contain exactly one <ASSISTANT_RESP>...</ASSISTANT_RESP> block.")
-    elif len(query_matches) > 1:
+    if len(query_matches) > 1:
         raise SchemaValidationError("Output must contain exactly one QUERY_BEGIN...QUERY_END block.")
 
 class LogiAttackPlugin(PluginBase):
@@ -124,13 +105,40 @@ class LogiAttackPlugin(PluginBase):
         Initialize the LogiAttackPlugin.
 
         Args:
-            llm: Optional LLM instance (defaults to ChatOpenAI).
+            llm: Optional LLM instance (defaults to ChatOpenAI with config-based model).
             sys_prompt (str): Optional system prompt override.
             logger: Optional logger instance.
         """
         self.logger = logger or get_logger("LogiAttackPlugin")
         self.sys_prompt = sys_prompt or _load_sys_prompt()
-        self.llm = llm or ChatOpenAI(model="gpt-4", temperature=0.0)
+        
+        # Use configuration system for LLM if not provided
+        if llm is None:
+            try:
+                config = get_config()
+                model = config.get_model_for_plugin("logiattack")
+                llm_settings = config.get_llm_settings_for_plugin("logiattack")
+                
+                # Extract relevant settings for ChatOpenAI
+                openai_kwargs = {
+                    "model": model,
+                    "temperature": llm_settings.get("temperature", 0.0),
+                    "max_tokens": llm_settings.get("max_tokens", 2000),
+                    "top_p": llm_settings.get("top_p", 1.0),
+                    "frequency_penalty": llm_settings.get("frequency_penalty", 0.0),
+                    "presence_penalty": llm_settings.get("presence_penalty", 0.0),
+                    "request_timeout": llm_settings.get("request_timeout", 120)
+                }
+                
+                self.llm = ChatOpenAI(**openai_kwargs)
+                self.logger.info(f"LogiAttack initialized with model: {model}")
+            except Exception as e:
+                # Fallback to default if config fails
+                self.logger.warning(f"Failed to load configuration, using defaults: {e}")
+                self.llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.0)
+        else:
+            self.llm = llm
+        
         self.prompt_template = ChatPromptTemplate.from_messages([
             ("system", self.sys_prompt),
             ("human", "LOGICAL QUERY: `{input}`")

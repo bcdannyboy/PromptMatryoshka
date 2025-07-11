@@ -1,0 +1,9 @@
+# Core dependencies
+langchain-openai
+langchain-core
+python-dotenv
+datasets
+
+# Optional dependencies for development
+pytest
+pytest-cov

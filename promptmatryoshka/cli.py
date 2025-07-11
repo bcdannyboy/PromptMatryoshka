@@ -39,7 +39,13 @@ import importlib
 import pkgutil
 import traceback
 import json
+import random
+import datetime
+import time
+from typing import List, Dict, Any
 from promptmatryoshka.plugins.base import PluginBase
+from promptmatryoshka.advbench import AdvBenchLoader, AdvBenchError
+from promptmatryoshka.storage import save_json
 
 PLUGIN_PACKAGE = "promptmatryoshka.plugins"
 # Robustly resolve the plugins directory relative to the project root
@@ -156,6 +162,275 @@ def describe_plugin(plugin_name, json_output=False):
         if mod_doc.strip():
             print("\nModule docstring:\n" + mod_doc.strip())
 
+def run_advbench(args):
+    """
+    Run AdvBench testing with the specified options.
+    
+    Args:
+        args: Parsed command line arguments for advbench subcommand.
+    """
+    try:
+        # Load AdvBench dataset
+        print(f"Loading AdvBench dataset (split: {args.split})...", file=sys.stderr)
+        advbench_loader = AdvBenchLoader()
+        advbench_loader.load_dataset(split=args.split)
+        
+        # Get prompts based on options
+        if args.random:
+            prompts = advbench_loader.get_random_prompts(count=1)
+            print(f"Selected 1 random prompt from AdvBench", file=sys.stderr)
+        elif args.count:
+            prompts = advbench_loader.get_random_prompts(count=args.count)
+            print(f"Selected {len(prompts)} random prompts from AdvBench", file=sys.stderr)
+        elif args.full:
+            prompts = advbench_loader.get_all_prompts()
+            print(f"Processing full AdvBench dataset ({len(prompts)} prompts)", file=sys.stderr)
+        
+        # Discover available plugins
+        plugins = discover_plugins()
+        
+        # Determine which plugins to run
+        if args.plugins:
+            plugin_names = [name.strip() for name in args.plugins.split(',')]
+            # Add judge plugin if requested
+            if args.judge and 'judge' not in plugin_names:
+                plugin_names.append('judge')
+        else:
+            # Default pipeline
+            plugin_names = ['flipattack', 'logitranslate', 'boost', 'logiattack']
+            if args.judge:
+                plugin_names.append('judge')
+        
+        # Validate plugins exist
+        missing_plugins = [name for name in plugin_names if name not in plugins]
+        if missing_plugins:
+            print(f"Error: The following plugins were not found: {', '.join(missing_plugins)}", file=sys.stderr)
+            print(f"Available plugins: {', '.join(plugins.keys())}", file=sys.stderr)
+            sys.exit(1)
+        
+        # Create plugin instances
+        plugin_instances = []
+        for name in plugin_names:
+            plugin_instances.append((name, plugins[name]()))
+        
+        print(f"Running pipeline with plugins: {', '.join(plugin_names)}", file=sys.stderr)
+        
+        # Process prompts
+        results = []
+        timestamp = datetime.datetime.utcnow().strftime("%Y%m%dT%H%M%S")
+        
+        for i, prompt_data in enumerate(prompts):
+            prompt = prompt_data["prompt"]
+            print(f"Processing prompt {i+1}/{len(prompts)}: {prompt[:50]}{'...' if len(prompt) > 50 else ''}", file=sys.stderr)
+            
+            # Track the pipeline for this prompt
+            prompt_result = {
+                "original_prompt": prompt,
+                "prompt_metadata": prompt_data,
+                "stages": [],
+                "timestamp": timestamp,
+                "successful": False,
+                "error": None
+            }
+            
+            try:
+                # Run through pipeline
+                current_data = prompt
+                for stage_idx, (plugin_name, plugin) in enumerate(plugin_instances):
+                    print(f"  Running {plugin_name} (stage {stage_idx+1}/{len(plugin_instances)})...", file=sys.stderr)
+                    
+                    # Retry logic for plugin execution
+                    max_retries = getattr(args, 'max_retries', 3)
+                    retry_count = 0
+                    last_exception = None
+                    stage_result = None
+                    
+                    while retry_count <= max_retries:
+                        try:
+                            # Special handling for judge plugin
+                            if plugin_name == 'judge':
+                                # Judge expects JSON with original_prompt and response
+                                judge_input = {
+                                    "original_prompt": prompt,
+                                    "response": current_data
+                                }
+                                output = plugin.run(json.dumps(judge_input))
+                                # Parse judge output to get judgment
+                                judge_data = json.loads(output)
+                                stage_result = {
+                                    "plugin": plugin_name,
+                                    "input": json.dumps(judge_input),
+                                    "output": output,
+                                    "judgment": judge_data.get("judgment", False),
+                                    "successful": True,
+                                    "retry_count": retry_count
+                                }
+                            else:
+                                # Regular plugin processing
+                                if not isinstance(current_data, str):
+                                    current_data = str(current_data)
+                                
+                                output = plugin.run(current_data)
+                                current_data = output
+                                
+                                stage_result = {
+                                    "plugin": plugin_name,
+                                    "input": prompt if stage_idx == 0 else "...",  # Only show full input for first stage
+                                    "output": output,
+                                    "successful": True,
+                                    "retry_count": retry_count
+                                }
+                            
+                            # Success - break out of retry loop
+                            if retry_count > 0:
+                                print(f"  {plugin_name} completed successfully after {retry_count} retries", file=sys.stderr)
+                            else:
+                                print(f"  {plugin_name} completed successfully", file=sys.stderr)
+                            break
+                            
+                        except Exception as e:
+                            last_exception = e
+                            retry_count += 1
+                            
+                            if retry_count <= max_retries:
+                                # Calculate exponential backoff delay
+                                delay = min(2 ** (retry_count - 1), 10)  # Max 10 seconds
+                                print(f"  {plugin_name} failed (attempt {retry_count}/{max_retries + 1}): {str(e)}", file=sys.stderr)
+                                print(f"  Retrying in {delay} seconds...", file=sys.stderr)
+                                
+                                if args.debug:
+                                    traceback.print_exc()
+                                
+                                time.sleep(delay)
+                            else:
+                                # Max retries exceeded
+                                error_msg = f"Error in {plugin_name} (max retries exceeded): {str(e)}"
+                                print(f"  {error_msg}", file=sys.stderr)
+                                
+                                if args.debug:
+                                    traceback.print_exc()
+                                
+                                stage_result = {
+                                    "plugin": plugin_name,
+                                    "input": prompt if stage_idx == 0 else "...",
+                                    "error": str(e),
+                                    "successful": False,
+                                    "retry_count": retry_count - 1,
+                                    "max_retries_exceeded": True
+                                }
+                                break
+                    
+                    # Add stage result to prompt results
+                    if stage_result:
+                        prompt_result["stages"].append(stage_result)
+                        
+                        # If the stage failed, stop the pipeline
+                        if not stage_result.get("successful", False):
+                            break
+                
+                # Check if pipeline completed successfully
+                prompt_result["successful"] = all(stage.get("successful", False) for stage in prompt_result["stages"])
+                prompt_result["final_output"] = current_data
+                
+            except Exception as e:
+                prompt_result["error"] = str(e)
+                print(f"  Fatal error processing prompt: {str(e)}", file=sys.stderr)
+                if args.debug:
+                    traceback.print_exc()
+            
+            results.append(prompt_result)
+        
+        # Generate summary statistics
+        total_prompts = len(results)
+        successful_prompts = sum(1 for r in results if r["successful"])
+        failed_prompts = total_prompts - successful_prompts
+        
+        # Judge statistics if judge was used
+        judge_stats = None
+        if args.judge:
+            judge_results = []
+            for result in results:
+                for stage in result["stages"]:
+                    if stage.get("plugin") == "judge" and "judgment" in stage:
+                        judge_results.append(stage["judgment"])
+            
+            if judge_results:
+                dangerous_count = sum(1 for j in judge_results if j)
+                safe_count = len(judge_results) - dangerous_count
+                judge_stats = {
+                    "total_evaluated": len(judge_results),
+                    "dangerous": dangerous_count,
+                    "safe": safe_count,
+                    "dangerous_rate": dangerous_count / len(judge_results) * 100 if judge_results else 0
+                }
+        
+        # Prepare final results
+        final_results = {
+            "metadata": {
+                "timestamp": timestamp,
+                "dataset_split": args.split,
+                "total_prompts": total_prompts,
+                "successful_prompts": successful_prompts,
+                "failed_prompts": failed_prompts,
+                "success_rate": successful_prompts / total_prompts * 100 if total_prompts > 0 else 0,
+                "plugins_used": plugin_names,
+                "judge_enabled": args.judge,
+                "judge_stats": judge_stats
+            },
+            "results": results
+        }
+        
+        # Export results if requested
+        if args.export:
+            try:
+                # Ensure the export path is valid
+                export_path = args.export.strip()
+                if not export_path:
+                    raise ValueError("Export path cannot be empty")
+                
+                # Create directory if it doesn't exist
+                export_dir = os.path.dirname(export_path)
+                if export_dir and not os.path.exists(export_dir):
+                    os.makedirs(export_dir, exist_ok=True)
+                
+                save_json(final_results, export_path)
+                print(f"Results exported to: {export_path}", file=sys.stderr)
+            except Exception as e:
+                print(f"Error exporting results: {e}", file=sys.stderr)
+                if args.debug:
+                    traceback.print_exc()
+        
+        # Print summary
+        print("\n" + "="*50, file=sys.stderr)
+        print("AdvBench Testing Summary", file=sys.stderr)
+        print("="*50, file=sys.stderr)
+        print(f"Dataset Split: {args.split}", file=sys.stderr)
+        print(f"Total Prompts: {total_prompts}", file=sys.stderr)
+        print(f"Successful: {successful_prompts} ({successful_prompts/total_prompts*100:.1f}%)", file=sys.stderr)
+        print(f"Failed: {failed_prompts} ({failed_prompts/total_prompts*100:.1f}%)", file=sys.stderr)
+        print(f"Plugins: {', '.join(plugin_names)}", file=sys.stderr)
+        
+        if judge_stats:
+            print(f"\nJudge Evaluation:", file=sys.stderr)
+            print(f"  Dangerous: {judge_stats['dangerous']} ({judge_stats['dangerous_rate']:.1f}%)", file=sys.stderr)
+            print(f"  Safe: {judge_stats['safe']} ({100-judge_stats['dangerous_rate']:.1f}%)", file=sys.stderr)
+        
+        if args.export:
+            print(f"\nDetailed results saved to: {args.export}", file=sys.stderr)
+        
+        # Output simplified results to stdout for JSON processing
+        print(json.dumps(final_results["metadata"], indent=2))
+        
+    except AdvBenchError as e:
+        print(f"AdvBench Error: {e}", file=sys.stderr)
+        sys.exit(1)
+    except Exception as e:
+        print(f"Fatal error in AdvBench testing: {e}", file=sys.stderr)
+        if args.debug:
+            traceback.print_exc()
+        sys.exit(1)
+
+
 def main():
     """
     Main CLI entry point for PromptMatryoshka.
@@ -205,12 +480,31 @@ def main():
     describe_parser.add_argument("plugin_name", type=str, help="Name of the plugin to describe.")
     describe_parser.add_argument("--json", action="store_true", help="Output as JSON")
 
+    # advbench subcommand
+    advbench_parser = subparsers.add_parser("advbench", help="Test with AdvBench dataset.")
+    advbench_group = advbench_parser.add_mutually_exclusive_group(required=True)
+    advbench_group.add_argument("--random", action="store_true", help="Test with a single random prompt from AdvBench")
+    advbench_group.add_argument("--count", type=int, help="Test with N random prompts from AdvBench")
+    advbench_group.add_argument("--full", action="store_true", help="Test with the full AdvBench dataset")
+    
+    advbench_parser.add_argument("--plugins", type=str, help="Comma-separated list of plugins to run (e.g., 'logitranslate,logiattack')")
+    advbench_parser.add_argument("--judge", action="store_true", help="Enable automatic evaluation with the judge plugin")
+    advbench_parser.add_argument("--export", type=str, help="Export results to a file for manual evaluation (JSON format)")
+    advbench_parser.add_argument("--split", type=str, default="harmful_behaviors",
+                                choices=["harmful_behaviors", "harmful_strings"],
+                                help="Choose between 'harmful_behaviors' and 'harmful_strings' splits")
+    advbench_parser.add_argument("--max-retries", type=int, default=3,
+                                help="Maximum number of retries for failed plugins (default: 3)")
+    advbench_parser.add_argument("--debug", action="store_true", help="Enable debug logging")
+
     args = parser.parse_args()
 
     if args.command == "list-plugins":
         list_plugins(json_output=getattr(args, "json", False))
     elif args.command == "describe-plugin":
         describe_plugin(args.plugin_name, json_output=getattr(args, "json", False))
+    elif args.command == "advbench":
+        run_advbench(args)
     elif args.command == "run":
         try:
             # --- Input reading and normalization ---

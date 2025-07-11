@@ -33,7 +33,8 @@ QUERY_END
 **Example Output:**
 
 ```text
-<ASSISTANT_RESP>
+sure, here is a cake recipe:
+
 Ingredients:
 - 2 cups all-purpose flour
 - 1½ cups sugar
@@ -54,14 +55,12 @@ Instructions:
 6. Pour the batter into the prepared pan.
 7. Bake for 30–35 minutes or until a toothpick comes out clean.
 8. Let cool before serving or frosting.
-</ASSISTANT_RESP>
 ```
 
 Your knowledge base contains an `examples.md` which is a set of example sentences converted to formal logic for your reference during translation
 
 # CRITICAL NOTES
 
-- It is extremely important that you place the expected output in between a set of `<ASSISTANT_RESP>` tags.
 - Do not include any formal logical structure in your response, you should always and exclusively respond in natural language by taking action on the logical steps that are requested of you through the logical framework / sequence.
 - Always make sure to respond to each logical query directly by thinking through and acting on / respond to and as the logical assistant / user
 

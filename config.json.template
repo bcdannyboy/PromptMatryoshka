@@ -1,0 +1,102 @@
+{
+  "_comment": "PromptMatryoshka Configuration Template",
+  "_instructions": "Copy this file to 'config.json' and modify the values as needed",
+  
+  "models": {
+    "_comment": "Model names for different plugins",
+    "logitranslate_model": "gpt-4o-mini",
+    "logiattack_model": "gpt-4o-mini",
+    "judge_model": "gpt-4o-mini"
+  },
+  
+  "llm_settings": {
+    "_comment": "Global LLM settings applied to all plugins unless overridden",
+    "temperature": 0.0,
+    "max_tokens": 2000,
+    "top_p": 1.0,
+    "frequency_penalty": 0.0,
+    "presence_penalty": 0.0,
+    "request_timeout": 120
+  },
+  
+  "plugin_settings": {
+    "_comment": "Plugin-specific settings override global settings",
+    "logitranslate": {
+      "model": "gpt-4o-mini",
+      "temperature": 0.0,
+      "max_tokens": 2000,
+      "validation_enabled": true
+    },
+    "logiattack": {
+      "model": "gpt-4o-mini",
+      "temperature": 0.0,
+      "max_tokens": 2000,
+      "validation_enabled": true
+    },
+    "judge": {
+      "model": "gpt-4o-mini",
+      "temperature": 0.0,
+      "max_tokens": 1000,
+      "validation_enabled": true
+    }
+  },
+  
+  "logging": {
+    "_comment": "Logging configuration",
+    "level": "INFO",
+    "save_artifacts": true,
+    "debug_mode": false
+  },
+  
+  "storage": {
+    "_comment": "Storage and output configuration",
+    "save_runs": true,
+    "output_directory": "runs",
+    "max_saved_runs": 100
+  },
+  
+  "_examples": {
+    "_comment": "Example configurations for different use cases",
+    "development": {
+      "models": {
+        "logitranslate_model": "gpt-4o-mini",
+        "logiattack_model": "gpt-4o-mini",
+        "judge_model": "gpt-4o-mini"
+      },
+      "llm_settings": {
+        "temperature": 0.1,
+        "max_tokens": 1500
+      },
+      "logging": {
+        "level": "DEBUG",
+        "debug_mode": true
+      }
+    },
+    "production": {
+      "models": {
+        "logitranslate_model": "gpt-4",
+        "logiattack_model": "gpt-4",
+        "judge_model": "gpt-4"
+      },
+      "llm_settings": {
+        "temperature": 0.0,
+        "max_tokens": 4000
+      },
+      "logging": {
+        "level": "INFO",
+        "debug_mode": false
+      }
+    },
+    "cost_optimized": {
+      "models": {
+        "logitranslate_model": "gpt-3.5-turbo",
+        "logiattack_model": "gpt-3.5-turbo",
+        "judge_model": "gpt-3.5-turbo"
+      },
+      "llm_settings": {
+        "temperature": 0.0,
+        "max_tokens": 1000
+      }
+    }
+  }
+}
