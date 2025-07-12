@@ -1039,7 +1039,12 @@ def main():
                             print(f"  {error_msg}", file=sys.stderr)
                             if args.debug:
                                 traceback.print_exc()
-                            results.append({"input": inp, "error": str(e)})
+                            # Even for errors, include stages field for consistent JSON structure
+                            results.append({
+                                "input": inp,
+                                "error": str(e),
+                                "stages": []  # Empty stages array for errors
+                            })
                             
             except ImportError:
                 # Fallback to old system if new system is not available
@@ -1112,7 +1117,12 @@ def main():
                                     traceback.print_exc()
                                 stage_results.append({"plugin": plugin_name, "error": str(e)})
                                 break
-                        results.append({"input": inp, "stages": stage_results})
+                        # Always include stages field for consistent JSON structure
+                        results.append({
+                            "input": inp,
+                            "stages": stage_results,
+                            "output": data if stage_results and "error" not in stage_results[-1] else None
+                        })
             # --- Output formatting ---
             if args.output_json:
                 print(json.dumps(results, indent=2, ensure_ascii=False))

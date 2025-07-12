@@ -193,7 +193,7 @@ class TestConfigurationValidation:
         with open(config_path, 'w') as f:
             json.dump(invalid_temp_config, f)
         
-        with pytest.raises((ValidationError, ValueError)):
+        with pytest.raises((ValidationError, ValueError, ConfigurationError)):
             Config(config_path)
         
         # Test invalid max_tokens (negative)
@@ -204,7 +204,7 @@ class TestConfigurationValidation:
         with open(config_path, 'w') as f:
             json.dump(invalid_tokens_config, f)
         
-        with pytest.raises((ValidationError, ValueError)):
+        with pytest.raises((ValidationError, ValueError, ConfigurationError)):
             Config(config_path)
         
         # Test invalid top_p range
@@ -215,7 +215,7 @@ class TestConfigurationValidation:
         with open(config_path, 'w') as f:
             json.dump(invalid_top_p_config, f)
         
-        with pytest.raises((ValidationError, ValueError)):
+        with pytest.raises((ValidationError, ValueError, ConfigurationError)):
             Config(config_path)
 
     def test_environment_variable_resolution(self):
@@ -373,7 +373,7 @@ class TestConfigurationValidation:
         with open(config_path, 'w') as f:
             json.dump(invalid_rate_limit_config, f)
         
-        with pytest.raises((ValidationError, ValueError)):
+        with pytest.raises((ValidationError, ValueError, ConfigurationError)):
             Config(config_path)
 
     def test_configuration_error_messages(self):

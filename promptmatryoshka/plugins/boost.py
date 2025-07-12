@@ -45,7 +45,7 @@ class BoostPlugin(PluginBase):
     # Plugin metadata
     PLUGIN_CATEGORY = "mutation"
     PLUGIN_REQUIRES = []
-    PLUGIN_CONFLICTS = ["flipattack"]  # May conflict with other prompt transformations
+    PLUGIN_CONFLICTS = []  # Can work together with other prompt transformations
     PLUGIN_PROVIDES = ["eos_enhanced_prompt"]
 
     def __init__(

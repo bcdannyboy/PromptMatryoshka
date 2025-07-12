@@ -376,6 +376,37 @@ class LLMHealthCheckError(LLMError):
         self.health_status = health_status
 
 
+# Core system exceptions
+class PromptMatryoshkaError(Exception):
+    """Base exception for all PromptMatryoshka errors."""
+    pass
+
+
+class ConfigurationError(PromptMatryoshkaError):
+    """Raised when configuration loading or validation fails."""
+    pass
+
+
+class PipelineValidationError(PromptMatryoshkaError):
+    """Raised when pipeline validation fails."""
+    pass
+
+
+class CircularDependencyError(PromptMatryoshkaError):
+    """Raised when circular dependencies are detected."""
+    pass
+
+
+class PluginError(PromptMatryoshkaError):
+    """Base class for plugin-related errors."""
+    pass
+
+
+class PluginExecutionError(PluginError):
+    """Raised when plugin execution fails."""
+    pass
+
+
 def map_provider_exception(
     provider: str,
     original_exception: Exception,

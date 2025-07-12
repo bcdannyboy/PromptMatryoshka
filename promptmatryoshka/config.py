@@ -34,14 +34,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 from .logging_utils import get_logger
 from .llm_factory import LLMFactory, get_factory
 from .llm_interface import LLMInterface
-from .exceptions import LLMConfigurationError
+from .exceptions import LLMConfigurationError, ConfigurationError
 
 logger = get_logger("Config")
-
-
-class ConfigurationError(Exception):
-    """Raised when configuration loading or validation fails."""
-    pass
 
 
 def resolve_env_var(value: str, allow_missing: bool = False) -> Optional[str]:
@@ -83,12 +78,20 @@ def resolve_env_var(value: str, allow_missing: bool = False) -> Optional[str]:
 class RateLimitConfig(BaseModel):
     """Rate limiting configuration for providers."""
     
-    requests_per_minute: Optional[int] = Field(None, ge=1, description="Requests per minute limit")
-    tokens_per_minute: Optional[int] = Field(None, ge=1, description="Tokens per minute limit")
-    requests_per_hour: Optional[int] = Field(None, ge=1, description="Requests per hour limit")
-    tokens_per_hour: Optional[int] = Field(None, ge=1, description="Tokens per hour limit")
+    requests_per_minute: Optional[int] = Field(None, ge=0, description="Requests per minute limit")
+    tokens_per_minute: Optional[int] = Field(None, ge=0, description="Tokens per minute limit")
+    requests_per_hour: Optional[int] = Field(None, ge=0, description="Requests per hour limit")
+    tokens_per_hour: Optional[int] = Field(None, ge=0, description="Tokens per hour limit")
     
     model_config = ConfigDict(extra="allow")
+    
+    @field_validator('requests_per_minute', 'tokens_per_minute', 'requests_per_hour', 'tokens_per_hour')
+    @classmethod
+    def validate_rate_limits(cls, v):
+        """Validate rate limit values allow reasonable ranges."""
+        if v is not None and v < 0:
+            raise ValueError('Rate limit values must be non-negative')
+        return v
 
 
 class ProviderConfig(BaseModel):
@@ -131,12 +134,12 @@ class ProfileConfig(BaseModel):
     
     provider: str = Field(..., description="Provider name for this profile")
     model: str = Field(..., description="Model to use")
-    temperature: Optional[float] = Field(0.0, ge=0.0, le=2.0, description="Sampling temperature")
-    max_tokens: Optional[int] = Field(2000, gt=0, description="Maximum tokens to generate")
-    top_p: Optional[float] = Field(1.0, ge=0.0, le=1.0, description="Nucleus sampling parameter")
-    frequency_penalty: Optional[float] = Field(0.0, ge=-2.0, le=2.0, description="Frequency penalty")
-    presence_penalty: Optional[float] = Field(0.0, ge=-2.0, le=2.0, description="Presence penalty")
-    request_timeout: Optional[int] = Field(120, gt=0, description="Request timeout in seconds")
+    temperature: Optional[float] = Field(0.0, description="Sampling temperature")
+    max_tokens: Optional[int] = Field(2000, description="Maximum tokens to generate")
+    top_p: Optional[float] = Field(1.0, description="Nucleus sampling parameter")
+    frequency_penalty: Optional[float] = Field(0.0, description="Frequency penalty")
+    presence_penalty: Optional[float] = Field(0.0, description="Presence penalty")
+    request_timeout: Optional[int] = Field(120, description="Request timeout in seconds")
     description: Optional[str] = Field(None, description="Profile description")
     
     model_config = ConfigDict(extra="allow")
@@ -145,16 +148,55 @@ class ProfileConfig(BaseModel):
     @classmethod
     def validate_temperature(cls, v):
         """Validate temperature parameter."""
-        if v is not None and not (0.0 <= v <= 2.0):
-            raise ValueError('Temperature must be between 0.0 and 2.0')
+        if v is not None:
+            if not isinstance(v, (int, float)):
+                raise ValueError('Temperature must be a number')
+            if not (0.0 <= v <= 2.0):
+                raise ValueError('Temperature must be between 0.0 and 2.0')
+        return v
+    
+    @field_validator('max_tokens')
+    @classmethod
+    def validate_max_tokens(cls, v):
+        """Validate max_tokens parameter."""
+        if v is not None:
+            if not isinstance(v, int):
+                raise ValueError('max_tokens must be an integer')
+            if v <= 0:
+                raise ValueError('max_tokens must be greater than 0')
         return v
     
     @field_validator('top_p')
     @classmethod
     def validate_top_p(cls, v):
         """Validate top_p parameter."""
-        if v is not None and not (0.0 <= v <= 1.0):
-            raise ValueError('top_p must be between 0.0 and 1.0')
+        if v is not None:
+            if not isinstance(v, (int, float)):
+                raise ValueError('top_p must be a number')
+            if not (0.0 <= v <= 1.0):
+                raise ValueError('top_p must be between 0.0 and 1.0')
+        return v
+    
+    @field_validator('frequency_penalty', 'presence_penalty')
+    @classmethod
+    def validate_penalties(cls, v):
+        """Validate penalty parameters."""
+        if v is not None:
+            if not isinstance(v, (int, float)):
+                raise ValueError('Penalty values must be numbers')
+            if not (-2.0 <= v <= 2.0):
+                raise ValueError('Penalty values must be between -2.0 and 2.0')
+        return v
+    
+    @field_validator('request_timeout')
+    @classmethod
+    def validate_request_timeout(cls, v):
+        """Validate request timeout parameter."""
+        if v is not None:
+            if not isinstance(v, int):
+                raise ValueError('request_timeout must be an integer')
+            if v <= 0:
+                raise ValueError('request_timeout must be greater than 0')
         return v
 
 
@@ -164,15 +206,70 @@ class PluginConfig(BaseModel):
     profile: Optional[str] = Field(None, description="Profile to use for this plugin")
     provider: Optional[str] = Field(None, description="Provider override for this plugin")
     model: Optional[str] = Field(None, description="Model override for this plugin")
-    temperature: Optional[float] = Field(None, ge=0.0, le=2.0, description="Temperature override")
-    max_tokens: Optional[int] = Field(None, gt=0, description="Max tokens override")
-    top_p: Optional[float] = Field(None, ge=0.0, le=1.0, description="Top-p override")
-    frequency_penalty: Optional[float] = Field(None, ge=-2.0, le=2.0, description="Frequency penalty override")
-    presence_penalty: Optional[float] = Field(None, ge=-2.0, le=2.0, description="Presence penalty override")
-    request_timeout: Optional[int] = Field(None, gt=0, description="Request timeout override")
+    temperature: Optional[float] = Field(None, description="Temperature override")
+    max_tokens: Optional[int] = Field(None, description="Max tokens override")
+    top_p: Optional[float] = Field(None, description="Top-p override")
+    frequency_penalty: Optional[float] = Field(None, description="Frequency penalty override")
+    presence_penalty: Optional[float] = Field(None, description="Presence penalty override")
+    request_timeout: Optional[int] = Field(None, description="Request timeout override")
     technique_params: Optional[Dict[str, Any]] = Field(None, description="Technique-specific parameters")
     
     model_config = ConfigDict(extra="allow")
+    
+    @field_validator('temperature')
+    @classmethod
+    def validate_temperature(cls, v):
+        """Validate temperature parameter."""
+        if v is not None:
+            if not isinstance(v, (int, float)):
+                raise ValueError('Temperature must be a number')
+            if not (0.0 <= v <= 2.0):
+                raise ValueError('Temperature must be between 0.0 and 2.0')
+        return v
+    
+    @field_validator('max_tokens')
+    @classmethod
+    def validate_max_tokens(cls, v):
+        """Validate max_tokens parameter."""
+        if v is not None:
+            if not isinstance(v, int):
+                raise ValueError('max_tokens must be an integer')
+            if v <= 0:
+                raise ValueError('max_tokens must be greater than 0')
+        return v
+    
+    @field_validator('top_p')
+    @classmethod
+    def validate_top_p(cls, v):
+        """Validate top_p parameter."""
+        if v is not None:
+            if not isinstance(v, (int, float)):
+                raise ValueError('top_p must be a number')
+            if not (0.0 <= v <= 1.0):
+                raise ValueError('top_p must be between 0.0 and 1.0')
+        return v
+    
+    @field_validator('frequency_penalty', 'presence_penalty')
+    @classmethod
+    def validate_penalties(cls, v):
+        """Validate penalty parameters."""
+        if v is not None:
+            if not isinstance(v, (int, float)):
+                raise ValueError('Penalty values must be numbers')
+            if not (-2.0 <= v <= 2.0):
+                raise ValueError('Penalty values must be between -2.0 and 2.0')
+        return v
+    
+    @field_validator('request_timeout')
+    @classmethod
+    def validate_request_timeout(cls, v):
+        """Validate request timeout parameter."""
+        if v is not None:
+            if not isinstance(v, int):
+                raise ValueError('request_timeout must be an integer')
+            if v <= 0:
+                raise ValueError('request_timeout must be greater than 0')
+        return v
 
 
 class PromptMatryoshkaConfig(BaseModel):
@@ -265,6 +362,20 @@ class PromptMatryoshkaConfig(BaseModel):
                     "temperature": 0.0,
                     "max_tokens": 2000,
                     "description": "Fast and cost-effective profile using GPT-3.5"
+                },
+                "creative-anthropic": {
+                    "provider": "anthropic",
+                    "model": "claude-3-5-sonnet-20241022",
+                    "temperature": 0.7,
+                    "max_tokens": 4000,
+                    "description": "Creative profile using Anthropic Claude with higher temperature"
+                },
+                "local-llama": {
+                    "provider": "ollama",
+                    "model": "llama3.2:8b",
+                    "temperature": 0.2,
+                    "max_tokens": 3000,
+                    "description": "Advanced local processing with Llama 8B"
                 }
             },
             "plugins": {

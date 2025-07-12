@@ -30,20 +30,12 @@ from promptmatryoshka.exceptions import (
     LLMError,
     LLMConfigurationError,
     LLMUnsupportedProviderError,
-    LLMValidationError
+    LLMValidationError,
+    PipelineValidationError,
+    CircularDependencyError
 )
 
 logger = get_logger("PromptMatryoshka")
-
-
-class PipelineValidationError(Exception):
-    """Raised when pipeline validation fails."""
-    pass
-
-
-class CircularDependencyError(Exception):
-    """Raised when circular dependencies are detected."""
-    pass
 
 
 class PipelineBuilder:
